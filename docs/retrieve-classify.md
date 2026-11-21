@@ -20,7 +20,7 @@ email state used by any flow.
 | Finance check | Code labels an email `INFO_ONLY` for the `Finance` label when its domain is on the invoice whitelist or its subject starts with `[Invoice-stripe]`. Either one is enough, and the LLM is never called. This is the only check that separates invoices from spam. |
 | Bulk sender | Code flags an email as bulk when it has bulk headers (`List-Unsubscribe`, `List-Id`, `Precedence: bulk`) or its domain is on the configured bulk list. The flag goes to the label call as context. |
 | Classification | A decision tree, in [classify-tree.md](classify-tree.md). One label call per branch, then a times call for `MEETING_REQUEST` or an urgent call for `TASK`. |
-| LLM input | `From`, `To`, `Subject`, `Date`, and the plain-text body cut at a fixed character cap. HTML is converted to text. Attachments appear by file name only. |
+| Label call input | Headers, sender checks, the body cut at 1000 characters, every link, and attachment names and sizes. Details in [What the label call sees](#what-the-label-call-sees). |
 | Triage result | The label and a short reason, plus the context the follow-up call extracted: proposed times or the urgent flag. |
 | Order | One email at a time, in arrival order. |
 | LLM call failures | Retry with backoff, then `NEEDS_REVIEW`. Polling continues. |
@@ -100,14 +100,20 @@ a log line. Urgent never branches the tree; it's context passed to the `TASK` ac
 The bulk flag goes to the external label call as a hint, not proof, because bulk headers
 are easy to forge.
 
-## What the LLM sees
+## What the label call sees
+
+Code picks the branch and builds this input. The model only chooses a label from that
+branch's set.
 
 | Part | Content |
 | --- | --- |
 | Headers | `From`, `To`, `Subject`, `Date` |
-| Body | The `text/plain` part. With only `text/html`, the HTML is converted to text. |
-| Cap | The body is cut at a fixed character limit. |
-| Attachments | File names only. Contents are never sent. |
+| `Reply-To` | Included when it differs from `From`. |
+| DMARC | The `dmarc=` result from Gmail's `Authentication-Results` header. External branch only. |
+| Bulk | A note that the sender is bulk, when code flagged it. |
+| Body | The `text/plain` part. With only `text/html`, the HTML is converted to text. Cut at 1000 characters. |
+| Links | A separate context list of every link in the whole body, not just the first 1000 characters. Each entry pairs the link text with the link's domain, not the full URL, read from `<a href>` in code. A plain-text body gives the domain only. Redirects aren't followed. |
+| Attachments | File names and sizes. Contents are never sent. |
 
 Email text is untrusted. It may contain *prompt injection*, text written to steer the
 model. The model has no tools and can only answer the question its call asks, so injected
