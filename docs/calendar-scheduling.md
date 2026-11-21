@@ -12,8 +12,8 @@ the event. When the calendar gets checked, and who approves, is in
 | Accounts | `MANAGER_EMAIL` and `AGENT_EMAIL` are different accounts. |
 | Length | 30 minutes when the email gives none. |
 | Vague times | "Thursday afternoon" is a window. The agent books the earliest free slot inside it. |
-| Time zone | The sender's. Taken from the `Date` header offset, unless the email names a zone. |
-| Work hours | `WORK_HOURS=09:00-17:00` in `.env`, read in the calendar's own time zone. |
+| Time zone | One zone for everyone: the sender, the manager and the calendar. Times are never converted. |
+| Work hours | `WORK_HOURS=09:00-17:00` in `.env`. |
 | Notice | A slot must start at least 2 hours from now. |
 | Weekends | Never booked. |
 | No times in the email | The agent picks 3 free slots and asks the manager to approve offering them. |
@@ -22,13 +22,13 @@ the event. When the calendar gets checked, and who approves, is in
 
 ## Running example
 
-Jane, in UTC+2, writes on Mon 23 Nov. The agent calendar runs in UTC.
+Jane writes on Mon 23 Nov.
 
-| Jane writes | Window in UTC | Calendar | Slot offered to the manager |
+| Jane writes | Window | Calendar | Slot offered to the manager |
 | --- | --- | --- | --- |
-| "Thursday at 2pm" | Thu 26 Nov 12:00–12:30 | Free | Thu 12:00–12:30 |
-| "Thursday afternoon" | Thu 26 Nov 10:00–15:00 | Busy 10:00–13:00 | Thu 13:00–13:30 |
-| "Saturday at 10" | Sat 28 Nov 08:00–08:30 | Free | None: weekend. Jane is asked for other times. |
+| "Thursday at 2pm" | Thu 26 Nov 14:00–14:30 | Free | Thu 14:00–14:30 |
+| "Thursday afternoon" | Thu 26 Nov 12:00–17:00 | Busy 12:00–15:00 | Thu 15:00–15:30 |
+| "Saturday at 10" | Sat 28 Nov 10:00–10:30 | Free | None: weekend. Jane is asked for other times. |
 | "Can we meet next week?" | No window | — | Three free slots, offered to the manager for approval |
 
 ## Times as windows
@@ -39,7 +39,7 @@ window, and a part of the day becomes a wider one.
 | Field | Holds |
 | --- | --- |
 | `quote` | The words in the email, such as "Thursday afternoon". The validator checks they appear in the email. |
-| `start`, `end` | The window, with the sender's UTC offset. |
+| `start`, `end` | The window. |
 
 | Email says | `start` | `end` |
 | --- | --- | --- |
@@ -48,8 +48,7 @@ window, and a part of the day becomes a wider one.
 | "Thursday afternoon" | Thu 12:00 | Thu 17:00 |
 
 The model resolves dates against the `Date` header, as it already does in
-[retrieve-classify.md](retrieve-classify.md#what-the-times-call-sees). Code converts each
-window to the calendar's time zone, which it reads from the calendar's settings.
+[retrieve-classify.md](retrieve-classify.md#what-the-times-call-sees).
 
 ## Picking a slot
 
@@ -57,8 +56,7 @@ Code applies the rules in order. The model plays no part here.
 
 ```mermaid
 flowchart TD
-    W[Windows from the times call] --> Z[Convert to the calendar's zone]
-    Z --> H[Clip to WORK_HOURS]
+    W[Windows from the times call] --> H[Clip to WORK_HOURS]
     H --> D[Drop weekends]
     D --> N[Drop anything starting within 2 hours]
     N --> F[Free/busy query on what's left]
@@ -96,7 +94,7 @@ sender for other times, as in [approval.md](approval.md#checking-the-calendar).
 | `id` | `<threadId>r<round>`, such as `18c2f0a1b2c3d4e5r2` |
 | `summary` | The original subject, without `Re:` |
 | `description` | A link to thread T in the agent's Gmail |
-| `start`, `end` | The approved slot, in the calendar's zone |
+| `start`, `end` | The approved slot |
 | `attendees` | The original sender |
 | `sendUpdates` | `all`, so Google emails the sender the invite |
 
