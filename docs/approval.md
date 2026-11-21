@@ -183,6 +183,9 @@ flowchart TD
     FB -- yes --> CAL[Calendar flow creates the event]
     FB -- no --> BZ[Ask sender for other times,<br/>tell the manager]
     BZ --> AS
+    K -- offer slots --> OS[Send the slots to the sender]
+    OS --> OD[Reply 'Done' to manager]
+    OD --> AS
     K -- task --> FL[Flag the email, notify the manager]
     CAL --> OK[Reply 'Done' to manager]
     FL --> OK

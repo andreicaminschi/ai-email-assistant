@@ -29,6 +29,10 @@ New mail arrives by polling.
 
 ## Rules that shape the code
 
+- The agent processes emails, one at a time. A label is what classification decides about
+  an email. It's never a unit of work. Every action is a step taken on that email.
+- Classification serves two purposes. The label is tagged on the email in Gmail to keep
+  the inbox tidy, and it picks the actions the agent takes on that email.
 - The LLM only classifies. It gets no Gmail or Calendar tools, and code maps each label
   to its action.
 - Only two cases need approval: a meeting request with proposed times, and an urgent
@@ -47,5 +51,6 @@ New mail arrives by polling.
 | [gmail-oauth.md](docs/gmail-oauth.md) | The two OAuth tokens, scopes, the token script, the startup account check, startup label setup. |
 | [containers.md](docs/containers.md) | Compose services, secrets, volumes, image build, run commands. |
 | [containers-dev.md](docs/containers-dev.md) | The `claude -p` wrapper used in development. |
+| [email-templates.md](docs/email-templates.md) | The fixed-text template, placeholders and disclaimer for every email the agent sends. |
 
 `tmp/` is gitignored scratch space. Nothing committed links into it.

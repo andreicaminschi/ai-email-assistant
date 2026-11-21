@@ -197,14 +197,19 @@ Labels, archiving and moving to Spam are safe to repeat. Sending isn't. Every se
 *idempotency key*, a unique ID that lets a rerun tell a finished send from an unfinished
 one.
 
+Each send has its own row in the `sends` table, keyed by the message ID being processed
+plus the template. One step can send two emails, and each is tracked on its own. The send
+states are in [state-audit.md](state-audit.md#send-states).
+
 ```mermaid
 flowchart TD
-    A[Send needed] --> B[Generate Message-ID]
-    B --> C[Save SENDING with the Message-ID]
+    A[Send needed] --> R{sends row for this message and template?}
+    R -- none --> B[Generate Message-ID]
+    B --> C[Save the row as SENDING with the Message-ID]
     C --> D[Send with that Message-ID header]
-    D --> E[Save SENT]
-
-    R[Rerun finds SENDING] --> Q{Sent has rfc822msgid:id?}
+    D --> E[Save the row as SENT]
+    R -- SENT --> E2[Skip the send]
+    R -- SENDING --> Q{Sent has rfc822msgid:id?}
     Q -- yes --> E
     Q -- no --> D
 ```
