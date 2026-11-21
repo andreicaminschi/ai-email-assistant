@@ -44,7 +44,7 @@ New mail arrives by polling.
 | Doc | Covers |
 | --- | --- |
 | [REQUIREMENTS.md](docs/REQUIREMENTS.md) | Labels, required behaviour, the approval flow, constraints. |
-| [gmail-oauth.md](docs/gmail-oauth.md) | The two OAuth tokens, scopes, the token script, the startup account check. |
+| [gmail-oauth.md](docs/gmail-oauth.md) | The two OAuth tokens, scopes, the token script, the startup account check, startup label setup. |
 | [containers.md](docs/containers.md) | Compose services, secrets, volumes, image build, run commands. |
 | [containers-dev.md](docs/containers-dev.md) | The `claude -p` wrapper used in development. |
 

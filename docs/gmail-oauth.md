@@ -17,6 +17,7 @@ touched. How the files reach the container is covered in [containers.md](contain
 | Refresh | Access tokens refresh in memory. The token files are never written back. |
 | Account check | Startup confirms both tokens belong to `AGENT_EMAIL` from `.env`. |
 | Revoked or expired token | Fixed by hand: rerun the token script. |
+| Label setup | A startup step after the token check. It creates missing labels and keeps each label's ID in memory. Details in [Label setup](#label-setup). |
 
 ## Scopes
 
@@ -86,10 +87,36 @@ flowchart TD
     G -- ok --> H[calendarList.get primary]
     H --> I{id == AGENT_EMAIL?}
     I -- no --> Z2[Log: Calendar token is for another account. Exit]
-    I -- yes --> OK[Connection ready. Continue startup]
+    I -- yes --> OK[Connection ready. Continue to label setup]
 ```
 
 Matching ignores case.
+
+## Label setup
+
+Gmail's API applies labels by ID, such as `Label_42`, not by name. The agent needs every
+label's ID before it acts on any email, so startup builds a name-to-ID map and creates
+whatever is missing in the same pass.
+
+| Label | Source |
+| --- | --- |
+| `MEETING_REQUEST`, `TASK`, `INFO_ONLY`, `SALES_OUTREACH`, `MARKETING`, `URGENT`, `Finance` | Created by the agent when missing. |
+| `SPAM` | Gmail's built-in `SPAM` label. Never created. |
+
+```mermaid
+flowchart TD
+    A[Token check passed] --> B[labels.list]
+    B --> C{Every required label present?<br/>Name match ignores case}
+    C -- yes --> M[Keep the name-to-ID map in memory]
+    C -- no --> D[labels.create for each missing one]
+    D -- ok --> M
+    D -- fails --> X[Log which label failed. Exit non-zero]
+    M --> P[Start polling]
+```
+
+The step runs on every start and is safe to repeat. A label that already exists is reused,
+including one the manager created by hand. The map lives only in memory, so a label renamed
+in Gmail is picked up on the next restart.
 
 ## Replacing a token
 
