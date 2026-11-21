@@ -263,6 +263,6 @@ flowchart TD
 | `AWAITING_APPROVAL` | The request went to the manager. Waiting for their reply. |
 | `AWAITING_SENDER` | The agent sent the sender new times, or asked them for times. Waiting for the sender's reply. |
 
-Both states belong to the thread's pending approval, and both join the state catalog in
-[retrieve-classify.md](retrieve-classify.md).
+Both states belong to the thread's pending approval, and both join the
+[state catalog](state-audit.md#state-catalog).
 
