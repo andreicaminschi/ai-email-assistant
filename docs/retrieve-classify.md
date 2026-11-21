@@ -21,6 +21,7 @@ email state used by any flow.
 | Bulk sender | Code flags an email as bulk when it has bulk headers (`List-Unsubscribe`, `List-Id`, `Precedence: bulk`) or its domain is on the configured bulk list. The flag goes to the label call as context. |
 | Classification | A decision tree, in [classify-tree.md](classify-tree.md). One label call per branch, then a times call for `MEETING_REQUEST` or an urgent call for `TASK`. |
 | Label call input | Headers, sender checks, the body cut at 1000 characters, every link, and attachment names and sizes. Details in [What the label call sees](#what-the-label-call-sees). |
+| Times call input | A separate prompt. It gets the `Date` header and the email text only, cut at 1000 characters. Details in [What the times call sees](#what-the-times-call-sees). |
 | Triage result | The label and a short reason, plus the context the follow-up call extracted: proposed times or the urgent flag. |
 | Order | One email at a time, in arrival order. |
 | LLM call failures | Retry with backoff, then `NEEDS_REVIEW`. Polling continues. |
@@ -114,6 +115,21 @@ branch's set.
 | Body | The `text/plain` part. With only `text/html`, the HTML is converted to text. Cut at 1000 characters. |
 | Links | A separate context list of every link in the whole body, not just the first 1000 characters. Each entry pairs the link text with the link's domain, not the full URL, read from `<a href>` in code. A plain-text body gives the domain only. Redirects aren't followed. |
 | Attachments | File names and sizes. Contents are never sent. |
+
+## What the times call sees
+
+The times call is its own prompt and runs only after the label call returns
+`MEETING_REQUEST`. It sees none of the label call's context.
+
+| Part | Content |
+| --- | --- |
+| `Date` | The email's `Date` header, so relative times like "tomorrow at 2pm" resolve to a real date. |
+| Body | The email text. In HTML, each link is replaced by its link text. A plain-text body keeps its full links. Cut at 1000 characters, after the links are replaced. |
+
+| Email body | Times call sees |
+| --- | --- |
+| HTML: `Book a slot <a href="https://cal.com/x">here</a>, Thu 2pm works` | `Book a slot here, Thu 2pm works` |
+| Plain text: `Pick a time at https://cal.com/x or Thu 2pm` | `Pick a time at https://cal.com/x or Thu 2pm` |
 
 Email text is untrusted. It may contain *prompt injection*, text written to steer the
 model. The model has no tools and can only answer the question its call asks, so injected
