@@ -1,7 +1,8 @@
 # Retrieving and classifying email
 
 The agent polls Gmail for new inbox mail and runs each email through code checks. Only
-then does it ask the LLM for a label. Every email carries a saved state, so a crash or
+then does it walk the [classification tree](classify-tree.md), which asks the LLM narrow
+questions. Every email carries a saved state, so a crash or
 restart resumes the email where it stopped. This doc also holds the catalog of every
 email state used by any flow.
 
@@ -15,9 +16,12 @@ email state used by any flow.
 | First start | The full sync processes every unread inbox email. |
 | Own mail | Any message whose `From` is `AGENT_EMAIL` is skipped. |
 | Approval replies | They split off before the LLM and go to the approval flow. |
-| Header checks | The `Auto-Submitted` skip and the internal-sender check run in code before the LLM. |
+| Header checks | The `Auto-Submitted` skip and the internal-sender check run in code before the LLM. The internal flag picks the tree's `INTERNAL` or `EXTERNAL` branch. |
+| Finance check | Code labels an email `INFO_ONLY` for the `Finance` label when its domain is on the invoice whitelist or its subject starts with `[Invoice-stripe]`. Either one is enough, and the LLM is never called. This is the only check that separates invoices from spam. |
+| Bulk sender | Code flags an email as bulk when it has bulk headers (`List-Unsubscribe`, `List-Id`, `Precedence: bulk`) or its domain is on the configured bulk list. The flag goes to the label call as context. |
+| Classification | A decision tree, in [classify-tree.md](classify-tree.md). One label call per branch, then a times call for `MEETING_REQUEST` or an urgent call for `TASK`. |
 | LLM input | `From`, `To`, `Subject`, `Date`, and the plain-text body cut at a fixed character cap. HTML is converted to text. Attachments appear by file name only. |
-| Triage result | Primary label, urgent flag, proposed times quoted from the email, and a short reason. |
+| Triage result | The label and a short reason, plus the context the follow-up call extracted: proposed times or the urgent flag. |
 | Order | One email at a time, in arrival order. |
 | LLM call failures | Retry with backoff, then `NEEDS_REVIEW`. Polling continues. |
 | Token failure mid-run | Log which token failed, then exit non-zero, like the [startup check](gmail-oauth.md#startup-check). |
@@ -56,16 +60,45 @@ flowchart TD
     C -- yes --> S
     C -- no --> D{Reply in a thread with a pending approval,<br/>from the manager, DMARC pass?}
     D -- yes --> AP[APPROVAL_REPLY<br/>handed to the approval flow]
-    D -- no --> E[Compute internal flag:<br/>allowlist match and DMARC pass]
-    E --> F[CLASSIFYING]
-    F --> G[LLM returns Triage]
+    D -- no --> E[Compute flags in code:<br/>internal, bulk]
+    E --> FIN{Domain on invoice whitelist,<br/>or subject starts with Invoice-stripe tag?}
+    FIN -- yes --> H
+    FIN -- no --> F[CLASSIFYING]
+    F --> G[Classification tree:<br/>INTERNAL or EXTERNAL branch]
     G -- valid --> H[CLASSIFIED<br/>handed to action dispatch]
     G -- invalid after retries --> NR[NEEDS_REVIEW]
     G -- call failed after backoff --> NR
 ```
 
-The internal flag is computed in code and stored with the email. Action dispatch combines
-it with the label, so the model never decides who is internal.
+The internal flag is computed in code and stored with the email. It picks the branch of
+the tree, so the model never decides who is internal.
+
+A finance match goes straight to `CLASSIFIED`. Code saves a `Triage` with the label
+`INFO_ONLY`, no proposed times, and a reason naming the rule that matched. The check runs
+before the tree, so a matched receipt never reaches an LLM call.
+
+| Finance rule | Matches |
+| --- | --- |
+| Invoice whitelist | The sender's domain is on the configured list of domains expected to send invoices. |
+| Subject prefix | The subject starts with `[Invoice-stripe]`. This is a demo tell, and anyone can forge it. |
+
+## Classification tree
+
+Code walks a *decision tree* and asks the LLM one narrow question at each node that needs
+it. This is *conditional prompt chaining*: each call's answer decides whether another call
+runs. An email costs at most two LLM calls. The full tree is in
+[classify-tree.md](classify-tree.md).
+
+| Branch | Label call can return | Follow-up call |
+| --- | --- | --- |
+| `EXTERNAL` | `MARKETING`, `SALES_OUTREACH`, `INFO_ONLY`, `SPAM`, `MEETING_REQUEST`, `TASK`, `UNCLASSIFIED` | Times for `MEETING_REQUEST`, urgent for `TASK` |
+| `INTERNAL` | `TASK`, `MEETING_REQUEST`, `UNCLASSIFIED` | Times for `MEETING_REQUEST`, urgent for `TASK` |
+
+`UNCLASSIFIED` is the escape hatch for an email that fits no label. Its action only writes
+a log line. Urgent never branches the tree; it's context passed to the `TASK` action.
+
+The bulk flag goes to the external label call as a hint, not proof, because bulk headers
+are easy to forge.
 
 ## What the LLM sees
 
@@ -77,19 +110,19 @@ it with the label, so the model never decides who is internal.
 | Attachments | File names only. Contents are never sent. |
 
 Email text is untrusted. It may contain *prompt injection*, text written to steer the
-model. The model has no tools and can only return a `Triage`, so injected text can at
-worst produce a wrong label.
+model. The model has no tools and can only answer the question its call asks, so injected
+text can at worst produce a wrong label or wrong context.
 
 ## Triage result
 
-| Field | Holds |
-| --- | --- |
-| `label` | One primary label from [REQUIREMENTS.md](REQUIREMENTS.md#labels). |
-| `urgent` | Whether the email carries a deadline or an escalation. Always false for `SPAM`. |
-| `proposed_times` | Meeting times quoted from the email text. Empty when there are none. |
-| `reason` | A short explanation, written to the audit log. |
+| Field | Holds | Set by |
+| --- | --- | --- |
+| `label` | One primary label from [REQUIREMENTS.md](REQUIREMENTS.md#labels), or `UNCLASSIFIED`. | Label call |
+| `reason` | A short explanation, written to the audit log. | Label call |
+| `proposed_times` | Meeting times quoted from the email text. Empty unless the label is `MEETING_REQUEST`. | Times call |
+| `urgent` | Whether the email carries a deadline or an escalation. Unset unless the label is `TASK`. | Urgent call |
 
-An output validator checks that every proposed time appears in the email. A failed check
+The times call has an output validator that checks every proposed time appears in the email. A failed check
 sends the error back to the model, which answers again. When the retries run out, the
 email goes to `NEEDS_REVIEW`.
 
@@ -97,7 +130,7 @@ email goes to `NEEDS_REVIEW`.
 
 | Failure | Handling |
 | --- | --- |
-| Invalid `Triage` | Pydantic-AI re-asks the model. After the retries run out, `NEEDS_REVIEW`. |
+| Invalid answer from any tree call | Pydantic-AI re-asks the model. After the retries run out, `NEEDS_REVIEW`. |
 | LLM call fails (API error, wrapper `502` or `504`) | Retry with backoff. Then `NEEDS_REVIEW`. |
 | Google token refresh fails | Log which token failed, then exit non-zero. |
 | Agent crashes mid-email | On restart the email resumes from its saved state, before any new mail. |
@@ -135,8 +168,9 @@ that reaches it succeeds, and a rerun starts from the saved state.
 | `NEW` | Retrieval | Fetched and recorded. No checks have run. |
 | `SKIPPED` | Retrieval | The agent's own mail, or an automatic reply. No label and no action. Final. |
 | `APPROVAL_REPLY` | Retrieval | The manager's reply to a pending approval. Handed to the approval flow, never classified. |
-| `CLASSIFYING` | Classification | The LLM call has started. A rerun from here calls the LLM again. |
+| `CLASSIFYING` | Classification | The classification tree has started. A rerun from here walks the tree again from the label call. |
 | `CLASSIFIED` | Classification | A valid `Triage` is saved. Handed to action dispatch. |
+| `ARCHIVED` | Marketing | The `MARKETING` label is on and `INBOX` is off. The audit entry isn't written yet. |
 | `SENDING` | Any flow that sends | The `Message-ID` is saved and the send may or may not have happened. A rerun checks Sent first. |
 | `SENT` | Any flow that sends | The email went out. |
 | `AWAITING_APPROVAL` | Approval | The summary went to the manager. The action waits for an APPROVE or REJECT reply. |
