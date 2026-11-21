@@ -22,6 +22,7 @@ email state used by any flow.
 | Classification | A decision tree, in [classify-tree.md](classify-tree.md). One label call per branch, then a times call for `MEETING_REQUEST` or an urgent call for `TASK`. |
 | Label call input | Headers, sender checks, the body cut at 1000 characters, every link, and attachment names and sizes. Details in [What the label call sees](#what-the-label-call-sees). |
 | Times call input | A separate prompt. It gets the `Date` header and the email text only, cut at 1000 characters. Details in [What the times call sees](#what-the-times-call-sees). |
+| Urgent call input | A separate prompt. It gets the `Date` and `Subject` headers, a priority-header hint, and the email text cut at 1000 characters. Details in [What the urgent call sees](#what-the-urgent-call-sees). |
 | Triage result | The label and a short reason, plus the context the follow-up call extracted: proposed times or the urgent flag. |
 | Order | One email at a time, in arrival order. |
 | LLM call failures | Retry with backoff, then `NEEDS_REVIEW`. Polling continues. |
@@ -131,6 +132,31 @@ The times call is its own prompt and runs only after the label call returns
 | HTML: `Book a slot <a href="https://cal.com/x">here</a>, Thu 2pm works` | `Book a slot here, Thu 2pm works` |
 | Plain text: `Pick a time at https://cal.com/x or Thu 2pm` | `Pick a time at https://cal.com/x or Thu 2pm` |
 
+## What the urgent call sees
+
+The urgent call is its own prompt and runs only after the label call returns `TASK`.
+Urgent means a deadline or an escalation, and both show up in the subject and body.
+
+| Part | Content |
+| --- | --- |
+| `Date` | The email's `Date` header, so "by Friday" can be judged against when it was sent. |
+| `Subject` | As sent. "URGENT:" or "ASAP" often appears only here. |
+| Priority hint | A note when `Importance: high`, `X-Priority: 1` or `Priority: urgent` is set. A hint, not proof, since any sender can set these headers. |
+| Body | Built like the times call's body: HTML links replaced by their text, plain-text links kept, cut at 1000 characters. |
+
+`From`, DMARC, the internal flag, attachments and the links list are left out. The
+internal flag already picked the branch, and urgency comes from what the email says.
+
+The call returns `urgent` and `evidence`, a quote of the deadline or escalation copied
+from the email. This is *generate-and-verify*: the model proposes a quote, and code checks
+it appears in the email. `urgent` can't be true without a quote.
+
+| Email | `urgent` | `evidence` |
+| --- | --- | --- |
+| CEO: "contract due today", sent Monday | true | `due today` |
+| Customer: "when you get a chance" | false | none |
+| `Importance: high`, no deadline in the body | false | none |
+
 Email text is untrusted. It may contain *prompt injection*, text written to steer the
 model. The model has no tools and can only answer the question its call asks, so injected
 text can at worst produce a wrong label or wrong context.
@@ -143,8 +169,11 @@ text can at worst produce a wrong label or wrong context.
 | `reason` | A short explanation, written to the audit log. | Label call |
 | `proposed_times` | Meeting times quoted from the email text. Empty unless the label is `MEETING_REQUEST`. | Times call |
 | `urgent` | Whether the email carries a deadline or an escalation. Unset unless the label is `TASK`. | Urgent call |
+| `evidence` | The deadline or escalation quoted from the email. Empty unless `urgent` is true. | Urgent call |
 
-The times call has an output validator that checks every proposed time appears in the email. A failed check
+The times call has an output validator that checks every proposed time appears in the
+email. The urgent call's validator checks that `evidence` appears in the email, and that
+`urgent` is false when `evidence` is empty. A failed check
 sends the error back to the model, which answers again. When the retries run out, the
 email goes to `NEEDS_REVIEW`.
 
