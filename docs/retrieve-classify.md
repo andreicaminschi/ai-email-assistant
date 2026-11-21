@@ -3,8 +3,8 @@
 The agent polls Gmail for new inbox mail and runs each email through code checks. Only
 then does it walk the [classification tree](classify-tree.md), which asks the LLM narrow
 questions. Every email carries a saved state, so a crash or
-restart resumes the email where it stopped. This doc also holds the catalog of every
-email state used by any flow.
+restart resumes the email where it stopped. Every email state used by any flow is listed
+in the [state catalog](state-audit.md#state-catalog).
 
 ## Decisions
 
@@ -208,25 +208,3 @@ flowchart TD
     Q -- yes --> E
     Q -- no --> D
 ```
-
-## State catalog
-
-Every state an email can be in, across all flows. A state is saved right after the step
-that reaches it succeeds, and a rerun starts from the saved state.
-
-| State | Owner | Meaning |
-| --- | --- | --- |
-| `NEW` | Retrieval | Fetched and recorded. No checks have run. |
-| `SKIPPED` | Retrieval | The agent's own mail, or an automatic reply. No label and no action. Final. |
-| `APPROVAL_REPLY` | Retrieval | The manager's reply to a pending approval. Handed to the approval flow, never classified. |
-| `CLASSIFYING` | Classification | The classification tree has started. A rerun from here walks the tree again from the label call. |
-| `CLASSIFIED` | Classification | A valid `Triage` is saved. Handed to action dispatch. |
-| `ARCHIVED` | Marketing | The `MARKETING` label is on and `INBOX` is off. The audit entry isn't written yet. |
-| `SENDING` | Any flow that sends | The `Message-ID` is saved and the send may or may not have happened. A rerun checks Sent first. |
-| `SENT` | Any flow that sends | The email went out. |
-| `AWAITING_APPROVAL` | Approval | The summary went to the manager. The action waits for an APPROVE or REJECT reply. |
-| `DONE` | Action dispatch | Every step for the email finished. Final. |
-| `NEEDS_REVIEW` | Any flow | The email couldn't be processed, after the retries or 3 attempts ran out. Final. |
-
-The action dispatch, approval and calendar flows add their own states to this table when
-they're designed.
