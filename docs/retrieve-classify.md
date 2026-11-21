@@ -167,11 +167,11 @@ text can at worst produce a wrong label or wrong context.
 | --- | --- | --- |
 | `label` | One primary label from [REQUIREMENTS.md](REQUIREMENTS.md#labels), or `UNCLASSIFIED`. | Label call |
 | `reason` | A short explanation, written to the audit log. | Label call |
-| `proposed_times` | Meeting times quoted from the email text. Empty unless the label is `MEETING_REQUEST`. | Times call |
+| `proposed_times` | Time windows, each a `quote` from the email plus `start` and `end`. Details in [calendar-scheduling.md](calendar-scheduling.md#times-as-windows). Empty unless the label is `MEETING_REQUEST`. | Times call |
 | `urgent` | Whether the email carries a deadline or an escalation. Unset unless the label is `TASK`. | Urgent call |
 | `evidence` | The deadline or escalation quoted from the email. Empty unless `urgent` is true. | Urgent call |
 
-The times call has an output validator that checks every proposed time appears in the
+The times call has an output validator that checks every window's `quote` appears in the
 email. The urgent call's validator checks that `evidence` appears in the email, and that
 `urgent` is false when `evidence` is empty. A failed check
 sends the error back to the model, which answers again. When the retries run out, the

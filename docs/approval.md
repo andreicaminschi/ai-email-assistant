@@ -10,7 +10,7 @@ the manager again.
 
 | Topic | Decision |
 | --- | --- |
-| Gated actions | Create the event for a `MEETING_REQUEST`. Flag and notify for an urgent internal `TASK`. Nothing else waits. |
+| Gated actions | Create the event for a `MEETING_REQUEST`, or offer free slots when it has no times. Flag and notify for an urgent internal `TASK`. Nothing else waits. |
 | Thread | The request goes in the original email's thread. The pending approval is keyed by that Gmail `threadId`. |
 | Manager | `MANAGER_EMAIL` from `.env`. Only a reply from that address with DMARC passing counts. |
 | Reading the answer | An LLM decision call, not text matching. Details in [The decision call](#the-decision-call). |
@@ -86,7 +86,8 @@ The diagram leaves out the busy paths. They're in [Checking the calendar](#check
 ## Checking the calendar
 
 Meetings only. The agent checks the agent account's Google Calendar with a free/busy
-query at two points.
+query at two points. How a free slot is picked, and how the event is built, is in
+[calendar-scheduling.md](calendar-scheduling.md).
 
 | Check | Runs on | All busy | Some free |
 | --- | --- | --- | --- |
