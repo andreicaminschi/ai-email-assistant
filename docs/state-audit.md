@@ -12,7 +12,7 @@ What the agent saves about each email, and the audit trail it leaves.
 | `sends` | One row per outgoing email, keyed by the message ID being processed and the template. It holds the generated `Message-ID` and the send state. Details in [Send states](#send-states). |
 | `meta` | The saved Gmail `historyId`. |
 | Audit store | Each entry is written to the `audit` table and printed to stdout as a JSON line. The table is the durable record, and stdout shows the live run. |
-| Audit timing | One entry per processed email, written when it reaches a final state: `DONE`, `SKIPPED` or `NEEDS_REVIEW`. |
+| Audit timing | An entry when the email enters `AWAITING_APPROVAL` or `AWAITING_SENDER`, and one when it reaches a final state: `DONE`, `SKIPPED` or `NEEDS_REVIEW`. An email still waiting when the run ends has an entry. |
 | Manager replies | An `APPROVAL_REPLY` email gets no entry of its own. The approval's result shows in the original email's outcome. |
 | Audit fields | Label, action, outcome. |
 | On behalf of | Out of scope. The agent only acts as `AGENT_EMAIL`, so entries have no "acted for" or "approved by" field. |
@@ -29,7 +29,7 @@ that reaches it succeeds, and a rerun starts from the saved state.
 | `APPROVAL_REPLY` | Retrieval | The manager's reply to a pending approval. Handed to the approval flow, never classified. |
 | `CLASSIFYING` | Classification | The classification tree has started. A rerun from here walks the tree again from the label call. |
 | `CLASSIFIED` | Classification | A valid `Triage` is saved. Handed to action dispatch. |
-| `ARCHIVED` | Marketing | The `MARKETING` label is on and `INBOX` is off. The audit entry isn't written yet. |
+| `ARCHIVED` | Action dispatch | The email's labels are on and `INBOX` is off. Reached by `MARKETING`, `SALES_OUTREACH` and invoices. The audit entry isn't written yet. |
 | `AWAITING_APPROVAL` | Approval | The summary went to the manager. The action waits for an APPROVE or REJECT reply. |
 | `AWAITING_SENDER` | Approval | The agent sent the sender new times, or asked them for times. Waiting for the sender's reply. |
 | `DONE` | Action dispatch | Every step for the email finished. Final. |
@@ -46,7 +46,8 @@ stateDiagram-v2
     NEW --> CLASSIFYING
     CLASSIFYING --> CLASSIFIED: valid Triage
     CLASSIFYING --> NEEDS_REVIEW: retries ran out
-    CLASSIFIED --> ARCHIVED: MARKETING, or decline sent then archive
+    CLASSIFIED --> ARCHIVED: reply sent then archive, or an invoice
+    CLASSIFIED --> DONE: labeled in the inbox, moved to Spam, or logged
     CLASSIFIED --> AWAITING_APPROVAL: gated action
     CLASSIFIED --> AWAITING_SENDER: every proposed time busy
     AWAITING_APPROVAL --> AWAITING_SENDER: new times, slots offered, or approved time now busy
@@ -60,7 +61,8 @@ stateDiagram-v2
     NEEDS_REVIEW --> [*]
 ```
 
-The audit entry is written on the way into `DONE`, `SKIPPED` or `NEEDS_REVIEW`. Any
+An audit entry is written on the way into `AWAITING_APPROVAL`, `AWAITING_SENDER`, `DONE`,
+`SKIPPED` or `NEEDS_REVIEW`. Any
 state can move to `NEEDS_REVIEW` once its retries run out; only the classification edge is
 drawn.
 

@@ -15,6 +15,7 @@ development and is covered in [containers-dev.md](containers-dev.md).
 | Images | Secrets are never `COPY`'d into an image, so no image layer holds a token. |
 | State | SQLite lives in the `agent-data` named volume, mounted into `app` only. |
 | Model switch | `.env` holds the model string and base URL. It points `app` at the Anthropic API or at the wrapper. |
+| Sender lists | `.env` holds `INTERNAL_DOMAINS`, `INTERNAL_ADDRESSES`, `INVOICE_DOMAINS` and `BULK_DOMAINS`, each a comma-separated list. |
 | Base image | Astral's uv image on Python 3.14 slim, for both services. |
 | User | Both containers run as a non-root user. |
 
@@ -30,6 +31,7 @@ flowchart LR
         S1[./secrets/gmail_token.json]
         S2[./secrets/calendar_token.json]
         S3[./secrets/claude_token]
+        S4[./secrets/anthropic_api_key]
         ENV[.env]
     end
 
@@ -43,6 +45,7 @@ flowchart LR
     S1 -- /run/secrets/gmail_token --> APP
     S2 -- /run/secrets/calendar_token --> APP
     S3 -- /run/secrets/claude_token --> WR
+    S4 -- /run/secrets/anthropic_api_key --> APP
     ENV -- model string, base URL --> APP
     VOL -- SQLite --> APP
 
@@ -54,7 +57,7 @@ flowchart LR
 
 | Service | Secrets | Volume | Ports published |
 | --- | --- | --- | --- |
-| `app` | `gmail_token`, `calendar_token` | `agent-data` | none |
+| `app` | `gmail_token`, `calendar_token`, `anthropic_api_key` | `agent-data` | none |
 | `wrapper` | `claude_token` | none | none |
 
 `app` never sees the Claude token, and `wrapper` never sees the Google tokens.

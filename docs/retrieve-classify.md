@@ -10,7 +10,7 @@ in the [state catalog](state-audit.md#state-catalog).
 
 | Topic | Decision |
 | --- | --- |
-| Trigger | Polling. |
+| Trigger | Polling, every `POLL_SECONDS` from `.env`. The default is 5. |
 | Normal poll | `history.list` returns `messageAdded` events since the saved `historyId`, filtered to `INBOX`. |
 | Full sync | `messages.list` runs on first start, or when `history.list` returns 404 because the saved `historyId` expired. |
 | First start | The full sync processes every unread inbox email. |
@@ -19,11 +19,11 @@ in the [state catalog](state-audit.md#state-catalog).
 | Header checks | The `Auto-Submitted` skip and the internal-sender check run in code before the LLM. The internal flag picks the tree's `INTERNAL` or `EXTERNAL` branch. |
 | Finance check | Code labels an email `INFO_ONLY` for the `Finance` label when its domain is on the invoice whitelist or its subject starts with `[Invoice-stripe]`. Either one is enough, and the LLM is never called. This is the only check that separates invoices from spam. |
 | Bulk sender | Code flags an email as bulk when it has bulk headers (`List-Unsubscribe`, `List-Id`, `Precedence: bulk`) or its domain is on the configured bulk list. The flag goes to the label call as context. |
-| Classification | A decision tree, in [classify-tree.md](classify-tree.md). One label call per branch, then a times call for `MEETING_REQUEST` or an urgent call for `TASK`. |
+| Classification | A decision tree, in [classify-tree.md](classify-tree.md). One label call per branch, then a times call for `MEETING_REQUEST`, and an urgent call for every label except `SPAM` and `UNCLASSIFIED`. |
 | Label call input | Headers, sender checks, the body cut at 1000 characters, every link, and attachment names and sizes. Details in [What the label call sees](#what-the-label-call-sees). |
 | Times call input | A separate prompt. It gets the `Date` header and the email text only, cut at 1000 characters. Details in [What the times call sees](#what-the-times-call-sees). |
 | Urgent call input | A separate prompt. It gets the `Date` and `Subject` headers, a priority-header hint, and the email text cut at 1000 characters. Details in [What the urgent call sees](#what-the-urgent-call-sees). |
-| Triage result | The label and a short reason, plus the context the follow-up call extracted: proposed times or the urgent flag. |
+| Triage result | The label and a short reason, plus the context the follow-up calls extracted: proposed times and the urgent flag. |
 | Order | One email at a time, in arrival order. |
 | LLM call failures | Retry with backoff, then `NEEDS_REVIEW`. Polling continues. |
 | Token failure mid-run | Log which token failed, then exit non-zero, like the [startup check](gmail-oauth.md#startup-check). |
@@ -88,16 +88,17 @@ before the tree, so a matched receipt never reaches an LLM call.
 
 Code walks a *decision tree* and asks the LLM one narrow question at each node that needs
 it. This is *conditional prompt chaining*: each call's answer decides whether another call
-runs. An email costs at most two LLM calls. The full tree is in
+runs. An email costs at most three LLM calls: label, times and urgent. The full tree is in
 [classify-tree.md](classify-tree.md).
 
-| Branch | Label call can return | Follow-up call |
+| Branch | Label call can return | Follow-up calls |
 | --- | --- | --- |
-| `EXTERNAL` | `MARKETING`, `SALES_OUTREACH`, `INFO_ONLY`, `SPAM`, `MEETING_REQUEST`, `TASK`, `UNCLASSIFIED` | Times for `MEETING_REQUEST`, urgent for `TASK` |
-| `INTERNAL` | `TASK`, `MEETING_REQUEST`, `UNCLASSIFIED` | Times for `MEETING_REQUEST`, urgent for `TASK` |
+| `EXTERNAL` | `MARKETING`, `SALES_OUTREACH`, `INFO_ONLY`, `SPAM`, `MEETING_REQUEST`, `TASK`, `UNCLASSIFIED` | Times for `MEETING_REQUEST`. Urgent for every label except `SPAM` and `UNCLASSIFIED`. |
+| `INTERNAL` | `TASK`, `MEETING_REQUEST`, `UNCLASSIFIED` | Times for `MEETING_REQUEST`. Urgent for `TASK` and `MEETING_REQUEST`. |
 
 `UNCLASSIFIED` is the escape hatch for an email that fits no label. Its action only writes
-a log line. Urgent never branches the tree; it's context passed to the `TASK` action.
+a log line. Urgent never branches the tree. It adds the `URGENT` label to the email, and
+for a `TASK` it's also context for the approval request.
 
 The bulk flag goes to the external label call as a hint, not proof, because bulk headers
 are easy to forge.
@@ -134,7 +135,8 @@ The times call is its own prompt and runs only after the label call returns
 
 ## What the urgent call sees
 
-The urgent call is its own prompt and runs only after the label call returns `TASK`.
+The urgent call is its own prompt. It runs after every label except `SPAM` and
+`UNCLASSIFIED`, and after the times call for a `MEETING_REQUEST`.
 Urgent means a deadline or an escalation, and both show up in the subject and body.
 
 | Part | Content |
@@ -168,7 +170,7 @@ text can at worst produce a wrong label or wrong context.
 | `label` | One primary label from [REQUIREMENTS.md](REQUIREMENTS.md#labels), or `UNCLASSIFIED`. | Label call |
 | `reason` | A short explanation, written to the audit log. | Label call |
 | `proposed_times` | Time windows, each a `quote` from the email plus `start` and `end`. Details in [calendar-scheduling.md](calendar-scheduling.md#times-as-windows). Empty unless the label is `MEETING_REQUEST`. | Times call |
-| `urgent` | Whether the email carries a deadline or an escalation. Unset unless the label is `TASK`. | Urgent call |
+| `urgent` | Whether the email carries a deadline or an escalation. Unset for `SPAM`, `UNCLASSIFIED` and invoices. | Urgent call |
 | `evidence` | The deadline or escalation quoted from the email. Empty unless `urgent` is true. | Urgent call |
 
 The times call has an output validator that checks every window's `quote` appears in the
@@ -184,6 +186,7 @@ email goes to `NEEDS_REVIEW`.
 | Invalid answer from any tree call | Pydantic-AI re-asks the model. After the retries run out, `NEEDS_REVIEW`. |
 | LLM call fails (API error, wrapper `502` or `504`) | Retry with backoff. Then `NEEDS_REVIEW`. |
 | Google token refresh fails | Log which token failed, then exit non-zero. |
+| Gmail or Calendar API error, such as `429` or `5xx` | Not covered in the demo. |
 | Agent crashes mid-email | On restart the email resumes from its saved state, before any new mail. |
 
 Each email row keeps an attempt counter. It goes up each time processing of the email

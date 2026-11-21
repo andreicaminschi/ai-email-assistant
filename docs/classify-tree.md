@@ -6,6 +6,10 @@ two trees below.
 Rounded boxes are LLM calls. The mapper is plain code. Green boxes are labels. The orange
 box is `UNCLASSIFIED`, the escape hatch.
 
+Every label except `SPAM` and `UNCLASSIFIED` runs the urgent call, because `URGENT` is a
+modifier the requirements allow on any other label. The mapper then runs the label's
+action and adds `URGENT` when the call found a deadline or an escalation.
+
 ## External sender
 
 ```mermaid
@@ -22,25 +26,23 @@ flowchart TD
     EL --> E_UNC[UNCLASSIFIED]:::unclassified
 
     E_MTG --> ET([LLM: extract proposed times])
-    E_TSK --> EU([LLM: extract urgent])
+    E_MKT --> EU([LLM: extract urgent])
+    E_SO --> EU
+    E_INF --> EU
+    ET --> EU
+    E_TSK --> EU
 
-    subgraph MAP[" "]
-        X_MKT[Archive]
-        X_SO[Send polite decline,<br/>then archive]
-        X_INF[Archive under<br/>Finance label]
-        X_SPM[Move to Spam, log]
-        X_MTG[Approval by email,<br/>then create calendar event<br/>around existing events]
-        X_FLAG[Approval by email,<br/>then flag and notify manager<br/>urgent passed as context]
-        X_ULOG[Log only]
+    subgraph MAP["Action for the label, plus URGENT when urgent"]
+        X_MKT[MARKETING:<br/>send acknowledgement,<br/>then archive]
+        X_SO[SALES_OUTREACH:<br/>send polite decline,<br/>then archive]
+        X_INF[INFO_ONLY:<br/>label, keep in inbox]
+        X_MTG[MEETING_REQUEST:<br/>approval by email, then create<br/>calendar event around existing events]
+        X_TSK[TASK:<br/>approval by email,<br/>then notify manager]
     end
 
-    E_MKT ---> X_MKT
-    E_SO ---> X_SO
-    E_INF ---> X_INF
-    E_SPM ---> X_SPM
-    ET --> X_MTG
-    EU --> X_FLAG
-    E_UNC ---> X_ULOG
+    EU --> MAP
+    E_SPM ---> X_SPM[Move to Spam, log]
+    E_UNC ---> X_ULOG[Log only]
 
     classDef tag fill:#d3f9d8,stroke:#2b8a3e,color:#1b4332
     classDef unclassified fill:#ffe8cc,stroke:#d9480f,color:#7c2d12
@@ -48,12 +50,12 @@ flowchart TD
 
 | Email | LLM calls | Action |
 | --- | --- | --- |
-| Newsletter | label | Archive |
-| Cold pitch | label | Send polite decline, then archive |
+| Newsletter | label, urgent | Send acknowledgement, then archive |
+| Cold pitch | label, urgent | Send polite decline, then archive |
 | Phishing link | label | Move to Spam, log |
-| Receipt from a supplier | label | Archive under Finance label |
-| Meeting invite from a vendor | label, times | Approval, then create event |
-| Task from a customer | label, urgent | Approval, then flag and notify manager |
+| FYI from a partner | label, urgent | Label, keep in inbox |
+| Meeting invite from a vendor | label, times, urgent | Approval, then create event |
+| Task from a customer | label, urgent | Approval, then notify manager |
 | Email that fits no label | label | Log only |
 
 ## Internal sender
@@ -68,17 +70,16 @@ flowchart TD
     IL --> I_UNC[UNCLASSIFIED]:::unclassified
 
     I_MTG --> IT([LLM: extract proposed times])
-    I_TSK --> IU([LLM: extract urgent])
+    IT --> IU([LLM: extract urgent])
+    I_TSK --> IU
 
-    subgraph MAP[" "]
-        X_MTG[Approval by email,<br/>then create calendar event<br/>around existing events]
-        X_FLAG[Approval by email,<br/>then flag and notify manager<br/>urgent passed as context]
-        X_LOG[Log only]
+    subgraph MAP["Action for the label, plus URGENT when urgent"]
+        X_MTG[MEETING_REQUEST:<br/>approval by email, then create<br/>calendar event around existing events]
+        X_TSK[TASK:<br/>approval by email,<br/>then notify manager]
     end
 
-    IT --> X_MTG
-    IU --> X_FLAG
-    I_UNC ---> X_LOG
+    IU --> MAP
+    I_UNC ---> X_LOG[Log only]
 
     classDef tag fill:#d3f9d8,stroke:#2b8a3e,color:#1b4332
     classDef unclassified fill:#ffe8cc,stroke:#d9480f,color:#7c2d12
@@ -86,6 +87,26 @@ flowchart TD
 
 | Email | LLM calls | Action |
 | --- | --- | --- |
-| CEO: "contract due today" | label, urgent | Approval, then flag and notify manager |
-| Colleague proposes Thu 2pm | label, times | Approval, then create event |
+| CEO: "contract due today" | label, urgent | Approval, then add `URGENT` and notify manager |
+| Colleague proposes Thu 2pm | label, times, urgent | Approval, then create event |
 | Colleague shares a newsletter | label | Log only |
+
+## What each label does in Gmail
+
+An email is archived only when [REQUIREMENTS.md](REQUIREMENTS.md#required-behaviour) says
+so. Every other email keeps its label and stays in the inbox.
+
+| Label | Gmail result |
+| --- | --- |
+| `MARKETING` | `MARKETING` label, archived after the acknowledgement is sent. |
+| `SALES_OUTREACH` | `SALES_OUTREACH` label, archived after the decline is sent. `SEND_SALES_DECLINE=false` in `.env` skips the decline. |
+| `INFO_ONLY`, invoice | `INFO_ONLY` and `Finance` labels, archived. The finance check in [retrieve-classify.md](retrieve-classify.md#one-email) sets it before the tree runs. |
+| `INFO_ONLY`, anything else | `INFO_ONLY` label, stays in the inbox. |
+| `SPAM` | Moved to Spam. |
+| `MEETING_REQUEST` | `MEETING_REQUEST` label, stays in the inbox. |
+| `TASK` | `TASK` label, stays in the inbox. |
+| `UNCLASSIFIED` | No label, stays in the inbox. |
+
+`URGENT` is added with the label's action whenever the urgent call returns `urgent: true`.
+"Flag" means adding `URGENT`. A `TASK` gets it after the manager approves, and the other
+labels get it right away. An invoice never reaches an LLM call, so it never gets `URGENT`.

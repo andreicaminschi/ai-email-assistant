@@ -59,8 +59,7 @@ Calendar events must respect existing availability and be scheduled sensibly.
 
 A sender is internal when its domain is in `INTERNAL_DOMAINS` or its exact address is in
 `INTERNAL_ADDRESSES`, and Gmail's own `Authentication-Results` header shows
-`dmarc=pass`. Both lists are supplied at launch and never committed
-([why](DECISIONS.md#internal-senders)).
+`dmarc=pass`. Both lists are supplied at launch and never committed.
 
 ## Approval flow
 
@@ -77,7 +76,7 @@ as an approval, match it to the pending action, and act on it.
 Only the two scenarios the table marks as requiring approval are gated: a meeting
 request with proposed times, and an urgent message from an internal sender. Every other
 action, sends included, runs automatically. Where the general rules disagree with the
-table, the table wins ([why](DECISIONS.md#only-the-tables-approval-cases-are-gated)).
+table, the table wins.
 
 ## Non-functional requirements
 
