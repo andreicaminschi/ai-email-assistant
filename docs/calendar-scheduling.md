@@ -17,7 +17,7 @@ the event. When the calendar gets checked, and who approves, is in
 | Notice | A slot must start at least 2 hours from now. |
 | Weekends | Never booked. |
 | No times in the email | The agent picks 3 free slots and asks the manager to approve offering them. |
-| Event | Title from the subject, a link to the thread in the description, the sender invited, Google emails the invite. |
+| Event | Title from the subject, no description, the sender invited, Google emails the invite. |
 | Rerun guard | A fixed event ID. A second insert returns `409`, which counts as done. |
 
 ## Running example
@@ -93,7 +93,6 @@ sender for other times, as in [approval.md](approval.md#checking-the-calendar).
 | --- | --- |
 | `id` | `<threadId>r<round>`, such as `18c2f0a1b2c3d4e5r2` |
 | `summary` | The original subject, without `Re:` |
-| `description` | A link to thread T in the agent's Gmail |
 | `start`, `end` | The approved slot |
 | `attendees` | The original sender |
 | `sendUpdates` | `all`, so Google emails the sender the invite |
