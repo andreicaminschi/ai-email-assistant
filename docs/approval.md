@@ -19,6 +19,7 @@ the manager again.
 | No reply | The thread stays in `AWAITING_APPROVAL` or `AWAITING_SENDER` until a reply comes. There's no timeout. |
 | Rounds of new times | No limit. |
 | Calendar check of the manager's times | None. The manager's times go to the sender as written. |
+| Calendar check of the sender's times | Twice: before each approval request, and again just before the event is created. Busy times are dropped. When none is left, the agent asks the sender for other times. Details in [Checking the calendar](#checking-the-calendar). |
 | Sender's reply | An LLM sender-reply call sorts it into times, no times, or declined. Details in [The sender's reply](#the-senders-reply). |
 | Sends | Every send uses the `SENDING` / `SENT` pattern from [retrieve-classify.md](retrieve-classify.md), so a rerun never sends twice. |
 
@@ -48,12 +49,14 @@ sequenceDiagram
     participant M as Manager
 
     S->>A: original email (thread T)
+    A->>A: free/busy check on the proposed times
     A->>DB: save pending approval, key T
     A->>M: approval request (thread T)
     DB-->>DB: AWAITING_APPROVAL
     M->>A: reply (thread T)
     A->>A: decision call
     alt APPROVE
+        A->>A: meetings: free/busy check again
         A->>A: run the action
         A->>M: "Done" (thread T)
     else REJECT
@@ -64,6 +67,7 @@ sequenceDiagram
         S->>A: reply (thread T)
         A->>A: sender-reply call
         alt TIMES
+            A->>A: free/busy check on the times
             A->>M: new approval request (thread T)
             DB-->>DB: AWAITING_APPROVAL
         else NO_TIMES
@@ -76,6 +80,43 @@ sequenceDiagram
         A->>M: "Please approve, reject or suggest times" (thread T)
     end
 ```
+
+The diagram leaves out the busy paths. They're in [Checking the calendar](#checking-the-calendar).
+
+## Checking the calendar
+
+Meetings only. The agent checks the agent account's Google Calendar with a free/busy
+query at two points.
+
+| Check | Runs on | All busy | Some free |
+| --- | --- | --- | --- |
+| Before an approval request | The sender's proposed times | Ask the sender for other times. The manager isn't asked. T becomes `AWAITING_SENDER`. | The request names the earliest free time. The busy times are dropped. |
+| Before the event is created | The approved time | Ask the sender for other times, and tell the manager in T. T becomes `AWAITING_SENDER`. | Create the event. |
+
+The second check exists because approvals have no timeout. A slot that was free when the
+manager was asked can be booked by the time they answer.
+
+| Case | Calendar | Result |
+| --- | --- | --- |
+| Jane proposes Thu 14:00 | Thu 14:00 is busy | Jane is asked for other times |
+| Jane proposes Thu 14:00 or Thu 16:00 | Thu 14:00 is busy | The manager is asked about Thu 16:00 |
+| Manager approves Thu 16:00 two days later | Thu 16:00 got booked in between | Jane is asked for other times, and the manager is told |
+
+```mermaid
+flowchart TD
+    P[Sender's proposed times] --> C1{Any free?}
+    C1 -- no --> AS[Ask sender for other times<br/>AWAITING_SENDER]
+    C1 -- yes --> RQ[Approval request for the earliest free time<br/>AWAITING_APPROVAL]
+    RQ --> AP[Manager approves]
+    AP --> C2{Still free?}
+    C2 -- yes --> EV[Calendar flow creates the event]
+    C2 -- no --> TM[Tell the manager]
+    TM --> AS
+```
+
+The email asking for other times has the same headers as [Sending new times to the
+sender](#sending-new-times-to-the-sender). It says the proposed times don't work and asks
+for others. It never names what's in the calendar.
 
 ## The approval request
 
@@ -137,7 +178,10 @@ flowchart TD
     D -- failed after retries --> NR[NEEDS_REVIEW]
     D --> X{decision}
     X -- APPROVE --> K{Pending action}
-    K -- meeting --> CAL[Calendar flow creates the event]
+    K -- meeting --> FB{Approved time still free?}
+    FB -- yes --> CAL[Calendar flow creates the event]
+    FB -- no --> BZ[Ask sender for other times,<br/>tell the manager]
+    BZ --> AS
     K -- task --> FL[Flag the email, notify the manager]
     CAL --> OK[Reply 'Done' to manager]
     FL --> OK
@@ -183,7 +227,7 @@ appear in the reply, and `TIMES` needs at least one time.
 
 | Jane's reply | `outcome` | What the agent does | T's state |
 | --- | --- | --- | --- |
-| "11 is great." | `TIMES` | New approval request to the manager | `AWAITING_APPROVAL` |
+| "11 is great." | `TIMES` | Calendar check, then a new approval request to the manager | `AWAITING_APPROVAL` |
 | "Let me check and get back to you." | `NO_TIMES` | Asks Jane which times work | `AWAITING_SENDER` |
 | "Actually, we don't need to meet." | `DECLINED` | Thanks Jane, then tells the manager in T | `DONE` |
 
@@ -192,8 +236,10 @@ flowchart TD
     R[Sender's reply, T is AWAITING_SENDER] --> C[Sender-reply call]
     C -- failed after retries --> NR[NEEDS_REVIEW]
     C --> X{outcome}
-    X -- TIMES --> AR[Approval request to manager]
+    X -- TIMES --> FB{Any time free?}
+    FB -- yes --> AR[Approval request to manager]
     AR --> AA[AWAITING_APPROVAL]
+    FB -- no --> AT
     X -- NO_TIMES --> AT[Ask sender for times]
     AT --> AS[AWAITING_SENDER]
     X -- DECLINED --> AK[Acknowledge the sender]
@@ -214,7 +260,7 @@ flowchart TD
 | State | Meaning |
 | --- | --- |
 | `AWAITING_APPROVAL` | The request went to the manager. Waiting for their reply. |
-| `AWAITING_SENDER` | The manager's new times went to the sender. Waiting for the sender's reply. |
+| `AWAITING_SENDER` | The agent sent the sender new times, or asked them for times. Waiting for the sender's reply. |
 
 Both states belong to the thread's pending approval, and both join the state catalog in
 [retrieve-classify.md](retrieve-classify.md).
