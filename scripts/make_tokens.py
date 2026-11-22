@@ -21,11 +21,14 @@ TOKENS = (
 )
 
 
-def request_credentials(scopes: tuple[str, ...]) -> Credentials:
+def request_credentials(scopes: tuple[str, ...], agent_email: str) -> Credentials:
     flow = InstalledAppFlow.from_client_secrets_file(  # pyright: ignore[reportUnknownMemberType]
         str(CLIENT_SECRET_FILE), scopes=list(scopes)
     )
-    return cast(Credentials, flow.run_local_server(port=0, prompt="consent"))  # pyright: ignore[reportUnknownMemberType]
+    credentials = flow.run_local_server(  # pyright: ignore[reportUnknownMemberType]
+        port=0, prompt="consent", login_hint=agent_email
+    )
+    return cast(Credentials, credentials)
 
 
 def main() -> int:
@@ -41,7 +44,7 @@ def main() -> int:
         return 1
     for service, file_name, scopes in TOKENS:
         print(f"Sign in as {agent_email} to grant {service} access.")
-        credentials = request_credentials(scopes)
+        credentials = request_credentials(scopes, agent_email)
         token_json = credentials.to_json()  # pyright: ignore[reportUnknownMemberType]
         (SECRETS_DIR / file_name).write_text(token_json, encoding="utf-8")
         print(f"Wrote secrets/{file_name}")
