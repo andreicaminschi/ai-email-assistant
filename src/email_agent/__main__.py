@@ -38,8 +38,8 @@ def main() -> None:
     print(f"Database ready: {db_path}")
     while True:
         result = poll_once(gmail, connection)
-        for row in result.new_rows:
-            print(f"{row.state} {row.message_id}")
+        for email in result.new_emails:
+            print(f"{email.row.state} {email.row.message_id} {email.subject or '(no subject)'}")
         for message_id in result.gone_ids:
             print(f"Skipped {message_id}: gone before fetch")
         time.sleep(settings.poll_seconds)

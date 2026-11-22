@@ -37,10 +37,11 @@ class HistoryExpired(Exception):
 
 
 @dataclass(frozen=True)
-class MinimalMessage:
+class MessageMetadata:
     message_id: str
     thread_id: str
     internal_date: int
+    subject: str
 
 
 def get_history_id(gmail: GmailResource) -> str:
@@ -104,15 +105,26 @@ def list_unread_inbox_ids(gmail: GmailResource) -> list[str]:
             return message_ids
 
 
-def get_minimal_message(gmail: GmailResource, message_id: str) -> MinimalMessage | None:
+def get_message_metadata(gmail: GmailResource, message_id: str) -> MessageMetadata | None:
     try:
-        message = gmail.users().messages().get(userId="me", id=message_id, format="minimal").execute()
+        message = (
+            gmail.users()
+            .messages()
+            .get(userId="me", id=message_id, format="metadata", metadataHeaders=["Subject"])
+            .execute()
+        )
     except HttpError as error:
         if error.status_code == HTTP_NOT_FOUND:
             return None
         raise
-    return MinimalMessage(
+    subjects = [
+        header.get("value", "")
+        for header in message.get("payload", {}).get("headers", [])
+        if header.get("name", "").casefold() == "subject"
+    ]
+    return MessageMetadata(
         message_id=message_id,
         thread_id=message.get("threadId", ""),
         internal_date=int(message.get("internalDate", "0")),
+        subject=subjects[0] if subjects else "",
     )
