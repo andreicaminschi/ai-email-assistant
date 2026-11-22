@@ -64,7 +64,7 @@ role tag. On a retry Claude then sees its own bad answer and the validation erro
 | assistant: `final_result` call | `Assistant: {"label": "FOO"}` |
 | tool: the validation error | `Tool: <error>` |
 
-The joined text goes in on stdin. The run's flags:
+The joined text goes in on stdin as one stream-json user message. The run's flags:
 
 | Flag | Why |
 | --- | --- |
@@ -73,8 +73,26 @@ The joined text goes in on stdin. The run's flags:
 | `--tools ""` | No tools. |
 | `--setting-sources ""`, `--strict-mcp-config` | No user or project settings, hooks or MCP servers. |
 | `--no-session-persistence` | Nothing saved per run. |
+| `--input-format stream-json`, `--output-format stream-json`, `--verbose` | The process waits for its message instead of giving up after 3 seconds, and the reply comes back as a `result` event. |
 
 Each run's working folder is an empty temp folder, so no `CLAUDE.md` is found.
+
+## The waiting process
+
+Starting `claude` costs more than a short answer, so the wrapper keeps one process
+started and waiting. Each process answers one request and exits, so no email sees
+another. A process is fixed to its `--model` and `--system-prompt`, so a request with a
+different model or prompt gets a cold start.
+
+| Request | Process used | Then |
+| --- | --- | --- |
+| First after start | Cold start | A waiting process starts for the same model and prompt |
+| Same model and prompt | The waiting process | The next one starts |
+| Other model or prompt | Cold start; the waiting one is stopped | The next one starts for the new pair |
+
+Each request logs one line when it arrives, one saying warm or cold and why, and one with
+the reply and its time, e.g. `req 2 reply in 3.8 s: {"label": "INFO_ONLY", ...}`. The
+prompt shows as a character count only. Stopping the wrapper stops the waiting process.
 
 ## One classify request
 
