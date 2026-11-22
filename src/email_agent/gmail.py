@@ -45,6 +45,17 @@ def remove_labels(gmail: GmailResource, message_id: str, label_ids: list[str]) -
     return True
 
 
+def modify_labels(
+    gmail: GmailResource, message_id: str, add_label_ids: list[str], remove_label_ids: list[str]
+) -> str:
+    gmail.users().messages().modify(
+        userId="me",
+        id=message_id,
+        body={"addLabelIds": add_label_ids, "removeLabelIds": remove_label_ids},
+    ).execute()
+    return message_id
+
+
 class HistoryExpired(Exception):
     pass
 

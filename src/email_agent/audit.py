@@ -8,6 +8,8 @@ from email_agent.db import AuditRow, State, insert_audit
 
 class Action(StrEnum):
     NONE = "none"
+    LABEL_ONLY = "label_only"
+    NONE_UNCLASSIFIED = "none_unclassified"
 
 
 def format_audit_line(entry: AuditRow) -> str:

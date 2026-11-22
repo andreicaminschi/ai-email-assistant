@@ -116,7 +116,10 @@ def main() -> None:
                 continue
             print(f"{row.state} {row.message_id} {parsed.subject or '(no subject)'}")
             print_parsed_email(parsed)
-            print_processed_email(process_email(connection, settings, label_agent, row, parsed))
+            processed = process_email(
+                connection, gmail, settings, label_agent, label_setup.label_ids, row, parsed
+            )
+            print_processed_email(processed)
         for message_id in result.gone_ids:
             print(f"Skipped {message_id}: gone before fetch")
         time.sleep(settings.poll_seconds)
