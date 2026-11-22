@@ -25,7 +25,7 @@ class MeetingEvent:
     title: str
     start: datetime
     end: datetime
-    attendee_email: str
+    attendee_emails: tuple[str, ...]
 
 
 def build_calendar(secrets_dir: Path) -> CalendarResource:
@@ -44,7 +44,7 @@ def build_event_body(event: MeetingEvent, time_zone: ZoneInfo) -> Event:
         "summary": event.title,
         "start": {"dateTime": event.start.isoformat(), "timeZone": time_zone.key},
         "end": {"dateTime": event.end.isoformat(), "timeZone": time_zone.key},
-        "attendees": [{"email": event.attendee_email}],
+        "attendees": [{"email": email} for email in event.attendee_emails],
     }
 
 
@@ -66,7 +66,7 @@ def book_meeting(
     Inserts with a fixed ID. True: created now. False: a rerun, or dev.
 
     @example
-    book_meeting(calendar, RunMode.PROD, tz, tom_event)  # → True, Tom gets the invite
+    book_meeting(calendar, RunMode.PROD, tz, tom_event)  # → True, Tom and the manager get the invite
     book_meeting(calendar, RunMode.PROD, tz, tom_event)  # → False, 409 already created
     """
     if run_mode is RunMode.DEV:

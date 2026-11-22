@@ -62,13 +62,13 @@ def read_meeting_times(approval: ApprovalRow) -> MeetingTimes | None:
 
 
 def build_meeting_answer(
-    approval: ApprovalRow, answer: Answer, times: MeetingTimes
+    approval: ApprovalRow, answer: Answer, times: MeetingTimes, manager_email: str
 ) -> ApprovalAnswer:
     """
     @example
-    build_meeting_answer(tom_approval, Answer.YES, times).event.event_id
-    # → the forward's threadId
-    build_meeting_answer(tom_approval, Answer.NO, times).outgoing.rendered.body
+    build_meeting_answer(tom_approval, Answer.YES, times, manager).event.attendee_emails
+    # → ("tom@clientco.example.com", manager)
+    build_meeting_answer(tom_approval, Answer.NO, times, manager).outgoing.rendered.body
     # → "...Unfortunately we can't make Thu 26 Nov 14:00–14:30..."
     """
     if answer is Answer.YES:
@@ -77,7 +77,7 @@ def build_meeting_answer(
             title=approval.original_subject,
             start=times.start,
             end=times.end,
-            attendee_email=approval.sender_email,
+            attendee_emails=(approval.sender_email, manager_email),
         )
         return ApprovalAnswer(Action.CREATE_EVENT, event=event)
     duration_minutes = int((times.end - times.start).total_seconds() // 60)
@@ -91,11 +91,13 @@ def build_meeting_answer(
     return ApprovalAnswer(Action.SEND_MEETING_DECLINE, outgoing=outgoing)
 
 
-def build_approval_answer(approval: ApprovalRow, answer: Answer) -> ApprovalAnswer | None:
+def build_approval_answer(
+    approval: ApprovalRow, answer: Answer, manager_email: str
+) -> ApprovalAnswer | None:
     """None: a meeting approval without its times."""
     if approval.kind is ApprovalKind.TASK:
         return build_task_answer(approval, answer)
     times = read_meeting_times(approval)
     if times is None:
         return None
-    return build_meeting_answer(approval, answer, times)
+    return build_meeting_answer(approval, answer, times, manager_email)

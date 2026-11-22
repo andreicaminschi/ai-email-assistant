@@ -37,8 +37,8 @@ Jane writes on Mon 23 Nov 2026, and the manager says yes.
 | `summary` | The original subject, without `Re:` |
 | `start` | `meeting_date` at `meeting_time`, or at `MEETING_DEFAULT_TIME` |
 | `end` | `start` plus `MEETING_DURATION_MINUTES` |
-| `attendees` | The original sender |
-| `sendUpdates` | `all`, so Google emails the sender the invite |
+| `attendees` | The original sender and `MANAGER_EMAIL` |
+| `sendUpdates` | `all`, so Google emails both of them the invite |
 
 Each forward gets its own F, so each approved meeting gets its own ID. A rerun builds the
 same ID, so the second insert returns `409 Conflict` and the agent treats the event as

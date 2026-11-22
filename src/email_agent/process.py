@@ -174,7 +174,7 @@ def answer_approval(
     if approval is None:
         detail = "approval missing"
         return ProcessedEmail(row=review_email(connection, row, detail), review_detail=detail)
-    approval_answer = build_approval_answer(approval, answer)
+    approval_answer = build_approval_answer(approval, answer, settings.manager_email)
     if approval_answer is None:
         detail = "meeting times missing"
         return ProcessedEmail(row=review_email(connection, row, detail), review_detail=detail)
