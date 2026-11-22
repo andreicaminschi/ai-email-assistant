@@ -147,6 +147,17 @@ def set_email_classifying(
     return to_email_row(row)
 
 
+def set_email_classified(connection: sqlite3.Connection, message_id: str, triage: str) -> EmailRow:
+    row = connection.execute(
+        f"UPDATE emails SET state = ?, triage = ?, updated_at = ? WHERE message_id = ?"
+        f" RETURNING {EMAIL_COLUMNS}",
+        (State.CLASSIFIED, triage, utc_now(), message_id),
+    ).fetchone()
+    if row is None:
+        raise EmailNotFound(message_id)
+    return to_email_row(row)
+
+
 @dataclass(frozen=True)
 class AuditRow:
     id: int

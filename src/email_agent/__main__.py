@@ -5,11 +5,20 @@ import time
 from importlib.metadata import version
 
 from email_agent.checks import SenderFlags
+from email_agent.classify.label import build_label_agent
 from email_agent.config import RunMode, SettingsError, load_settings, strip_and_drop_empty
-from email_agent.db import EmailRow, database_path, delete_email, open_database, read_new_emails
+from email_agent.db import (
+    EmailRow,
+    State,
+    database_path,
+    delete_email,
+    open_database,
+    read_new_emails,
+)
+from email_agent.llm import LlmConfigError, build_model
 from email_agent.message import ParsedEmail, fetch_parsed_email
 from email_agent.poller import poll_once
-from email_agent.process import process_email
+from email_agent.process import ProcessedEmail, process_email
 from email_agent.startup import (
     SPAM_LABEL_ID,
     StartupError,
@@ -37,9 +46,21 @@ def print_parsed_email(parsed: ParsedEmail) -> None:
 
 def format_flags_line(row: EmailRow, flags: SenderFlags) -> str:
     return (
-        f"{row.state} {row.message_id} internal={str(flags.internal).lower()}"
+        f"{State.CLASSIFYING} {row.message_id} internal={str(flags.internal).lower()}"
         f" bulk={str(flags.bulk).lower()} dmarc={flags.dmarc or 'none'}"
     )
+
+
+def print_processed_email(processed: ProcessedEmail) -> None:
+    if processed.flags is not None:
+        print(format_flags_line(processed.row, processed.flags))
+    if processed.triage is not None:
+        print(
+            f"{processed.row.state} {processed.row.message_id}"
+            f" {processed.triage.label}: {processed.triage.reason}"
+        )
+    if processed.error is not None:
+        print(f"Label call failed {processed.row.message_id}: {processed.error}")
 
 
 def main() -> None:
@@ -49,6 +70,11 @@ def main() -> None:
         print(error, file=sys.stderr)
         raise SystemExit(1) from None
     print(f"email-agent {version('email-agent')} starting as {settings.agent_email}")
+    try:
+        label_agent = build_label_agent(build_model(settings))
+    except LlmConfigError as error:
+        print(error, file=sys.stderr)
+        raise SystemExit(1) from None
     try:
         gmail, _calendar = check_connection(settings)
         print("Connection ready")
@@ -90,9 +116,7 @@ def main() -> None:
                 continue
             print(f"{row.state} {row.message_id} {parsed.subject or '(no subject)'}")
             print_parsed_email(parsed)
-            processed = process_email(connection, settings, row, parsed)
-            if processed.flags is not None:
-                print(format_flags_line(processed.row, processed.flags))
+            print_processed_email(process_email(connection, settings, label_agent, row, parsed))
         for message_id in result.gone_ids:
             print(f"Skipped {message_id}: gone before fetch")
         time.sleep(settings.poll_seconds)
