@@ -15,15 +15,15 @@ in the [state catalog](state-audit.md#state-catalog).
 | Full sync | `messages.list` runs on first start, or when `history.list` returns 404 because the saved `historyId` expired. |
 | First start | The full sync processes every unread inbox email. |
 | Own mail | Any message whose `From` is `AGENT_EMAIL` is skipped. |
-| Approval replies | They split off before the LLM and go to the approval flow. |
+| Approval replies | The manager's reply in a thread awaiting approval becomes `APPROVAL_REPLY`. It splits off before the label call and goes to the approval flow. |
 | Header checks | The `Auto-Submitted` skip and the internal-sender check run in code before the LLM. The internal flag picks the tree's `INTERNAL` or `EXTERNAL` branch. |
-| Finance check | Code labels an email `INFO_ONLY` for the `Finance` label when its domain is on the invoice whitelist or its subject starts with `[Invoice-stripe]`. Either one is enough, and the LLM is never called. This is the only check that separates invoices from spam. |
-| Bulk sender | Code flags an email as bulk when it has bulk headers (`List-Unsubscribe`, `List-Id`, `Precedence: bulk`) or its domain is on the configured bulk list. The flag goes to the label call as context. |
-| Classification | A decision tree, in [classify-tree.md](classify-tree.md). One label call per branch, then a times call for `MEETING_REQUEST`, and an urgent call for every label except `SPAM` and `UNCLASSIFIED`. |
+| Bulk sender | Code flags an email as bulk when it has bulk headers (`List-Unsubscribe`, `List-Id`, `Precedence: bulk`) or its domain is on the configured bulk list. The flag goes to the label call as a hint. |
+| Classification | A decision tree, in [classify-tree.md](classify-tree.md). One label call per branch, then the extraction calls that label needs: times for `MEETING_REQUEST`, invoice for `INFO_ONLY`, and urgent for every label except `SPAM` and `UNCLASSIFIED`. |
 | Label call input | Headers, sender checks, the body cut at 1000 characters, every link, and attachment names and sizes. Details in [What the label call sees](#what-the-label-call-sees). |
 | Times call input | A separate prompt. It gets the `Date` header and the email text only, cut at 1000 characters. Details in [What the times call sees](#what-the-times-call-sees). |
+| Invoice call input | A separate prompt. It gets the `Subject`, attachment names and the email text cut at 1000 characters. Details in [What the invoice call sees](#what-the-invoice-call-sees). |
 | Urgent call input | A separate prompt. It gets the `Date` and `Subject` headers, a priority-header hint, and the email text cut at 1000 characters. Details in [What the urgent call sees](#what-the-urgent-call-sees). |
-| Triage result | The label and a short reason, plus the context the follow-up calls extracted: proposed times and the urgent flag. |
+| Triage result | The label and a short reason, plus the context the extraction calls returned: meeting date and time, invoice flag, urgent flag. |
 | Order | One email at a time, in arrival order. |
 | LLM call failures | Retry with backoff, then `NEEDS_REVIEW`. Polling continues. |
 | Token failure mid-run | Log which token failed, then exit non-zero, like the [startup check](gmail-oauth.md#startup-check). |
@@ -60,14 +60,12 @@ flowchart TD
     B -- yes --> S[SKIPPED]
     B -- no --> C{Auto-Submitted is set and not 'no'?}
     C -- yes --> S
-    C -- no --> D{Reply in a thread with a pending approval,<br/>from the manager, DMARC pass?}
+    C -- no --> D{Thread has a pending approval,<br/>from the manager, DMARC pass?}
     D -- yes --> AP[APPROVAL_REPLY<br/>handed to the approval flow]
     D -- no --> E[Compute flags in code:<br/>internal, bulk]
-    E --> FIN{Domain on invoice whitelist,<br/>or subject starts with Invoice-stripe tag?}
-    FIN -- yes --> H
-    FIN -- no --> F[CLASSIFYING]
+    E --> F[CLASSIFYING]
     F --> G[Classification tree:<br/>INTERNAL or EXTERNAL branch]
-    G -- valid --> H[CLASSIFIED<br/>handed to action dispatch]
+    G -- valid --> H[CLASSIFIED<br/>handed to the handler]
     G -- invalid after retries --> NR[NEEDS_REVIEW]
     G -- call failed after backoff --> NR
 ```
@@ -75,30 +73,25 @@ flowchart TD
 The internal flag is computed in code and stored with the email. It picks the branch of
 the tree, so the model never decides who is internal.
 
-A finance match goes straight to `CLASSIFIED`. Code saves a `Triage` with the label
-`INFO_ONLY`, no proposed times, and a reason naming the rule that matched. The check runs
-before the tree, so a matched receipt never reaches an LLM call.
-
-| Finance rule | Matches |
-| --- | --- |
-| Invoice whitelist | The sender's domain is on the configured list of domains expected to send invoices. |
-| Subject prefix | The subject starts with `[Invoice-stripe]`. This is a demo tell, and anyone can forge it. |
-
 ## Classification tree
 
 Code walks a *decision tree* and asks the LLM one narrow question at each node that needs
 it. This is *conditional prompt chaining*: each call's answer decides whether another call
-runs. An email costs at most three LLM calls: label, times and urgent. The full tree is in
-[classify-tree.md](classify-tree.md).
+runs. An email costs at most three LLM calls: label, then times or invoice, then urgent.
+The full tree is in [classify-tree.md](classify-tree.md).
 
-| Branch | Label call can return | Follow-up calls |
+| Branch | Label call can return | Extraction calls |
 | --- | --- | --- |
-| `EXTERNAL` | `MARKETING`, `SALES_OUTREACH`, `INFO_ONLY`, `SPAM`, `MEETING_REQUEST`, `TASK`, `UNCLASSIFIED` | Times for `MEETING_REQUEST`. Urgent for every label except `SPAM` and `UNCLASSIFIED`. |
+| `EXTERNAL` | `MARKETING`, `SALES_OUTREACH`, `INFO_ONLY`, `SPAM`, `MEETING_REQUEST`, `TASK`, `UNCLASSIFIED` | Times for `MEETING_REQUEST`. Invoice for `INFO_ONLY`. Urgent for every label except `SPAM` and `UNCLASSIFIED`. |
 | `INTERNAL` | `TASK`, `MEETING_REQUEST`, `UNCLASSIFIED` | Times for `MEETING_REQUEST`. Urgent for `TASK` and `MEETING_REQUEST`. |
 
-`UNCLASSIFIED` is the escape hatch for an email that fits no label. Its action only writes
-a log line. Urgent never branches the tree. It adds the `URGENT` label to the email, and
-for a `TASK` it's also context for the approval request.
+`UNCLASSIFIED` is the escape hatch for an email that fits no label. Its handler does
+nothing, and the engine still writes the audit entry. Urgent never branches the tree. It's
+a parameter of the handler, which adds the `URGENT` label.
+
+A `TASK` is a request the manager can approve or reject, such as "need approval for PTO
+tomorrow". An action item that can't be approved, such as "need that velocity report", is
+`UNCLASSIFIED`.
 
 The bulk flag goes to the external label call as a hint, not proof, because bulk headers
 are easy to forge.
@@ -125,18 +118,65 @@ The times call is its own prompt and runs only after the label call returns
 
 | Part | Content |
 | --- | --- |
-| `Date` | The email's `Date` header, so relative times like "tomorrow at 2pm" resolve to a real date. |
+| `Date` | The email's `Date` header, so a date without a year gets the right one. |
 | Body | The email text. In HTML, each link is replaced by its link text. A plain-text body keeps its full links. Cut at 1000 characters, after the links are replaced. |
 
 | Email body | Times call sees |
 | --- | --- |
-| HTML: `Book a slot <a href="https://cal.com/x">here</a>, Thu 2pm works` | `Book a slot here, Thu 2pm works` |
-| Plain text: `Pick a time at https://cal.com/x or Thu 2pm` | `Pick a time at https://cal.com/x or Thu 2pm` |
+| HTML: `Book a slot <a href="https://cal.com/x">here</a>, Thu 26 Nov works` | `Book a slot here, Thu 26 Nov works` |
+| Plain text: `Pick a time at https://cal.com/x or Thu 26 Nov` | `Pick a time at https://cal.com/x or Thu 26 Nov` |
+
+The call returns one explicit date and an optional clock time. Explicit means a written
+day and month. Relative or vague words, such as "tomorrow", "Thursday", "afternoon" or
+"next week", give no date. A missing year takes the `Date` header's year. When the email
+names several dates, the call returns the first one.
+
+| Output | Content |
+| --- | --- |
+| `meeting_date` | The date, or empty. |
+| `date_quote` | The words in the email that carry the date. |
+| `meeting_time` | The clock time, or empty. Only a written time counts, such as `14:00` or `2pm`. |
+| `time_quote` | The words that carry the time. |
+
+Examples, with the email sent Mon 23 Nov 2026:
+
+| Email says | `meeting_date` | `meeting_time` |
+| --- | --- | --- |
+| "Can we meet Thu 26 Nov 2026?" | 2026-11-26 | empty |
+| "Thu 26 Nov at 14:00" | 2026-11-26 | 14:00 |
+| "26 Nov or 27 Nov, 2pm" | 2026-11-26 | 14:00 |
+| "Thursday afternoon" | empty | empty |
+| "Can we meet next week?" | empty | empty |
+
+How the date and time become an event is in
+[calendar-scheduling.md](calendar-scheduling.md).
+
+## What the invoice call sees
+
+The invoice call is its own prompt and runs only after the label call returns
+`INFO_ONLY`, on the external branch. It answers one question: is this an invoice or a
+receipt?
+
+| Part | Content |
+| --- | --- |
+| `Subject` | As sent. "Invoice #4512" often appears only here. |
+| Attachments | File names only, such as `invoice-4512.pdf`. |
+| Body | Built like the times call's body, cut at 1000 characters. |
+
+The call returns `is_invoice` and `evidence`, a quote copied from the subject, an
+attachment name or the body. This is *generate-and-verify*: the model proposes a quote,
+and code checks it appears in the email. `is_invoice` can't be true without a quote.
+
+| Email | `is_invoice` | `evidence` |
+| --- | --- | --- |
+| "Invoice #4512 for October" | true | `Invoice #4512` |
+| Receipt with `receipt-981.pdf` attached | true | `receipt-981.pdf` |
+| "FYI, our office is closed Friday" | false | none |
 
 ## What the urgent call sees
 
 The urgent call is its own prompt. It runs after every label except `SPAM` and
-`UNCLASSIFIED`, and after the times call for a `MEETING_REQUEST`.
+`UNCLASSIFIED`, after the times or invoice call when the label has one.
 Urgent means a deadline or an escalation, and both show up in the subject and body.
 
 | Part | Content |
@@ -150,12 +190,12 @@ Urgent means a deadline or an escalation, and both show up in the subject and bo
 internal flag already picked the branch, and urgency comes from what the email says.
 
 The call returns `urgent` and `evidence`, a quote of the deadline or escalation copied
-from the email. This is *generate-and-verify*: the model proposes a quote, and code checks
-it appears in the email. `urgent` can't be true without a quote.
+from the email. Code checks the quote appears in the email, the same generate-and-verify
+check as the invoice call. `urgent` can't be true without a quote.
 
 | Email | `urgent` | `evidence` |
 | --- | --- | --- |
-| CEO: "contract due today", sent Monday | true | `due today` |
+| Colleague: "PTO approval needed today", sent Monday | true | `needed today` |
 | Customer: "when you get a chance" | false | none |
 | `Importance: high`, no deadline in the body | false | none |
 
@@ -169,15 +209,16 @@ text can at worst produce a wrong label or wrong context.
 | --- | --- | --- |
 | `label` | One primary label from [REQUIREMENTS.md](REQUIREMENTS.md#labels), or `UNCLASSIFIED`. | Label call |
 | `reason` | A short explanation, written to the audit log. | Label call |
-| `proposed_times` | Time windows, each a `quote` from the email plus `start` and `end`. Details in [calendar-scheduling.md](calendar-scheduling.md#times-as-windows). Empty unless the label is `MEETING_REQUEST`. | Times call |
-| `urgent` | Whether the email carries a deadline or an escalation. Unset for `SPAM`, `UNCLASSIFIED` and invoices. | Urgent call |
+| `meeting_date`, `meeting_time` | The explicit date and optional time, each with its quote. Empty unless the label is `MEETING_REQUEST`. | Times call |
+| `is_invoice`, `invoice_evidence` | Whether an `INFO_ONLY` email is an invoice or receipt, and the quote that shows it. Unset for every other label. | Invoice call |
+| `urgent` | Whether the email carries a deadline or an escalation. Unset for `SPAM` and `UNCLASSIFIED`. | Urgent call |
 | `evidence` | The deadline or escalation quoted from the email. Empty unless `urgent` is true. | Urgent call |
 
-The times call has an output validator that checks every window's `quote` appears in the
-email. The urgent call's validator checks that `evidence` appears in the email, and that
-`urgent` is false when `evidence` is empty. A failed check
-sends the error back to the model, which answers again. When the retries run out, the
-email goes to `NEEDS_REVIEW`.
+Each extraction call has an output validator. The times call checks each quote appears in
+the email, and that a time never comes without a date. The invoice and urgent calls check
+their quote appears in the email, and that the flag is false when the quote is empty. A
+failed check sends the error back to the model, which answers again. When the retries run
+out, the email goes to `NEEDS_REVIEW`.
 
 ## Retries and crash recovery
 
@@ -201,8 +242,10 @@ Labels, archiving and moving to Spam are safe to repeat. Sending isn't. Every se
 one.
 
 Each send has its own row in the `sends` table, keyed by the message ID being processed
-plus the template. One step can send two emails, and each is tracked on its own. The send
-states are in [state-audit.md](state-audit.md#send-states).
+plus the template. The send states are in [state-audit.md](state-audit.md#send-states).
+
+The guard assumes Gmail keeps the `Message-ID` header the agent sets. This isn't verified
+up front for the demo.
 
 ```mermaid
 flowchart TD

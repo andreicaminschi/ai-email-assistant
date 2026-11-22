@@ -24,7 +24,7 @@ touched. How the files reach the container is covered in [containers.md](contain
 | Token | Scope | Covers |
 | --- | --- | --- |
 | Gmail | `gmail.modify` | Read, label, archive, move to Spam, send, create labels, read the profile. |
-| Calendar | `calendar.readonly` | Free/busy, and the primary calendar's ID for the account check. |
+| Calendar | `calendar.readonly` | The primary calendar's ID for the account check. |
 | Calendar | `calendar.events` | Create events. |
 
 `gmail.modify` can't permanently delete mail. The agent never needs to.

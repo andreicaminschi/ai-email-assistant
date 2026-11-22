@@ -12,6 +12,7 @@ in [containers.md](containers.md).
 | --- | --- |
 | When it runs | Only under the compose `dev` profile. |
 | Language | Python, on the same uv base image as `app`. |
+| Server | FastAPI on uvicorn, port 8000. Both live in the `wrapper` dependency group of the shared uv project. |
 | Claude Code | Installed with the native installer at a pinned version. No Node. |
 | Login | A `claude setup-token` token in `./secrets/claude_token`, passed as `CLAUDE_CODE_OAUTH_TOKEN`. |
 | Endpoint | `POST /v1/chat/completions`, non-streaming, with a `final_result` tool only. |
@@ -24,10 +25,10 @@ in [containers.md](containers.md).
 
 `.env` decides which model `app` calls:
 
-| Environment | Model string | Base URL |
-| --- | --- | --- |
-| Production | `anthropic:claude-sonnet-5-5` | Anthropic's default |
-| Development | `openai:sonnet` | `http://wrapper:8000/v1` |
+| Environment | `LLM_MODEL` | `LLM_BASE_URL` | `llm_api_key` secret |
+| --- | --- | --- | --- |
+| Production | `anthropic:claude-sonnet-5-5` | empty, Anthropic's default | A real Anthropic key |
+| Development | `openai:sonnet` | `http://wrapper:8000/v1` | Any dummy value. The wrapper ignores it. |
 
 ## Login
 
