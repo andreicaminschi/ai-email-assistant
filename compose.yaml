@@ -12,6 +12,16 @@ services:
     volumes:
       - agent-data:/data
 
+  wrapper:
+    build:
+      context: .
+      dockerfile: Containerfile
+      target: wrapper
+    profiles:
+      - dev
+    secrets:
+      - claude_token
+
 secrets:
   gmail_token:
     file: ./secrets/gmail_token
@@ -19,6 +29,8 @@ secrets:
     file: ./secrets/calendar_token
   llm_api_key:
     file: ./secrets/llm_api_key
+  claude_token:
+    file: ./secrets/claude_token
 
 volumes:
   agent-data:

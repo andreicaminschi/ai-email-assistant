@@ -28,8 +28,9 @@ As the developer, I run the dev profile and the app can reach the wrapper at
 
 - [ ] `podman compose --profile dev up --build` starts both services.
 - [ ] `docker compose --profile dev up --build` does the same.
-- [ ] `podman compose exec app python -c` with a short `urllib` POST to
-      `http://wrapper:8000/v1/chat/completions` gets `200`.
+- [ ] `podman compose --profile dev run --rm --no-deps app /app/.venv/bin/python -c` with a
+      short `urllib` POST to `http://wrapper:8000/v1/chat/completions` gets `200`. `exec`
+      doesn't work yet, because `app` exits after startup until step 010 adds the poll loop.
 - [ ] `curl http://localhost:8000` from the host fails to connect.
 - [ ] `uv run pyright` is clean.
 
