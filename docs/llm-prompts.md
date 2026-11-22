@@ -164,7 +164,7 @@ Two kinds of failure, each with its own limit. When either runs out, the email g
 | Failure | Limit | Worst case |
 | --- | --- | --- |
 | Invalid answer: fails the output schema or a validator, such as a quote not in the email | 2 output retries per call. Pydantic-AI sends the error back to the model, which answers again. | 3 answers per call |
-| Request fails: API error, wrapper `502` or `504` | 3 retries after the first request, waiting 2, 4 and 8 seconds | 4 requests and 14 seconds of waiting. Through the dev wrapper, each request can also run to its 120-second timeout. |
+| Request fails: connection error, timeout, `429`, `5xx` including wrapper `502` or `504`. Any other `4xx` goes to `NEEDS_REVIEW` with no retry. | 3 retries after the first request, waiting 2, 4 and 8 seconds | 4 requests and 14 seconds of waiting. Through the dev wrapper, each request can also run to its 120-second timeout. |
 
 An email makes at most three calls, so its worst case is nine model answers. While a
 request waits, the queue waits too, since emails are processed one at a time.

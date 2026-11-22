@@ -2,31 +2,38 @@ import os
 import sqlite3
 import sys
 import time
+from collections.abc import Mapping
 from importlib.metadata import version
+from typing import TYPE_CHECKING
 
 from email_agent.checks import SenderFlags
-from email_agent.classify.label import build_label_agent
-from email_agent.config import RunMode, SettingsError, load_settings, strip_and_drop_empty
+from email_agent.classify.label import LabelAgent, build_label_agent
+from email_agent.config import RunMode, Settings, SettingsError, load_settings, strip_and_drop_empty
 from email_agent.db import (
     EmailRow,
     State,
     database_path,
     delete_email,
     open_database,
-    read_new_emails,
+    read_unfinished_emails,
 )
+from email_agent.google_auth import TokenError
 from email_agent.llm import LlmConfigError, build_model
 from email_agent.message import ParsedEmail, fetch_parsed_email
 from email_agent.poller import poll_once
-from email_agent.process import ProcessedEmail, process_email
+from email_agent.process import ProcessedEmail, process_email, start_attempt
 from email_agent.startup import (
     SPAM_LABEL_ID,
     StartupError,
     check_connection,
+    format_token_error,
     list_agent_label_names,
     reset_processed_emails,
     set_up_labels,
 )
+
+if TYPE_CHECKING:
+    from googleapiclient._apis.gmail.v1 import GmailResource  # pyright: ignore[reportMissingModuleSource]
 
 
 PREVIEW_LENGTH = 120
@@ -61,6 +68,52 @@ def print_processed_email(processed: ProcessedEmail) -> None:
         )
     if processed.error is not None:
         print(f"Label call failed {processed.row.message_id}: {processed.error}")
+    if processed.review_detail is not None:
+        print(f"{processed.row.state} {processed.row.message_id}: {processed.review_detail}")
+
+
+def process_unfinished_emails(
+    connection: sqlite3.Connection,
+    gmail: GmailResource,
+    settings: Settings,
+    label_agent: LabelAgent,
+    label_ids: Mapping[str, str],
+) -> int:
+    rows = read_unfinished_emails(connection)
+    for row in rows:
+        started = start_attempt(connection, row)
+        if started.row.state is State.NEEDS_REVIEW:
+            print_processed_email(started)
+            continue
+        parsed = fetch_parsed_email(gmail, row.message_id)
+        if parsed is None:
+            print(f"Dropped {delete_email(connection, row.message_id)}: gone before parse")
+            continue
+        print(f"{row.state} {row.message_id} {parsed.subject or '(no subject)'}")
+        print_parsed_email(parsed)
+        processed = process_email(
+            connection, gmail, settings, label_agent, label_ids, started.row, parsed
+        )
+        print_processed_email(processed)
+    return len(rows)
+
+
+def run_poll_loop(
+    connection: sqlite3.Connection,
+    gmail: GmailResource,
+    settings: Settings,
+    label_agent: LabelAgent,
+    label_ids: Mapping[str, str],
+) -> None:
+    sync_label_ids = ["INBOX"] if settings.run_mode is RunMode.DEV else ["INBOX", "UNREAD"]
+    resumed_count = process_unfinished_emails(connection, gmail, settings, label_agent, label_ids)
+    print(f"Resumed {resumed_count} unfinished emails")
+    while True:
+        result = poll_once(gmail, connection, sync_label_ids)
+        process_unfinished_emails(connection, gmail, settings, label_agent, label_ids)
+        for message_id in result.gone_ids:
+            print(f"Skipped {message_id}: gone before fetch")
+        time.sleep(settings.poll_seconds)
 
 
 def main() -> None:
@@ -106,23 +159,11 @@ def main() -> None:
         print(f"Dev reset: {len(dev_reset.reset_ids)} emails")
         for message_id in dev_reset.dropped_ids:
             print(f"Dropped {message_id}: gone from Gmail")
-    sync_label_ids = ["INBOX"] if settings.run_mode is RunMode.DEV else ["INBOX", "UNREAD"]
-    while True:
-        result = poll_once(gmail, connection, sync_label_ids)
-        for row in read_new_emails(connection):
-            parsed = fetch_parsed_email(gmail, row.message_id)
-            if parsed is None:
-                print(f"Dropped {delete_email(connection, row.message_id)}: gone before parse")
-                continue
-            print(f"{row.state} {row.message_id} {parsed.subject or '(no subject)'}")
-            print_parsed_email(parsed)
-            processed = process_email(
-                connection, gmail, settings, label_agent, label_setup.label_ids, row, parsed
-            )
-            print_processed_email(processed)
-        for message_id in result.gone_ids:
-            print(f"Skipped {message_id}: gone before fetch")
-        time.sleep(settings.poll_seconds)
+    try:
+        run_poll_loop(connection, gmail, settings, label_agent, label_setup.label_ids)
+    except TokenError as error:
+        print(format_token_error(error.service_name, error), file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

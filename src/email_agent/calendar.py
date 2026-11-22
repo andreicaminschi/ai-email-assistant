@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 
 def build_calendar(secrets_dir: Path) -> CalendarResource:
-    credentials = load_credentials(secrets_dir / "calendar_token")
+    credentials = load_credentials(secrets_dir / "calendar_token", "Calendar")
     return build("calendar", "v3", credentials=credentials, cache_discovery=False)
 
 

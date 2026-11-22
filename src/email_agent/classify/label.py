@@ -3,6 +3,7 @@ from pydantic_ai.models import Model
 
 from email_agent.checks import SenderFlags
 from email_agent.classify.models import LabelResult
+from email_agent.llm import OUTPUT_RETRIES, call_with_backoff
 from email_agent.message import ParsedEmail
 
 SHARED_RULES = """\
@@ -44,7 +45,12 @@ type LabelAgent = Agent[None, LabelResult]
 
 
 def build_label_agent(model: Model) -> LabelAgent:
-    return Agent(model, output_type=LabelResult, system_prompt=EXTERNAL_PROMPT)
+    return Agent(
+        model,
+        output_type=LabelResult,
+        system_prompt=EXTERNAL_PROMPT,
+        retries={"output": OUTPUT_RETRIES},
+    )
 
 
 def format_sender(name: str, address: str) -> str:
@@ -77,4 +83,5 @@ def format_label_input(parsed: ParsedEmail, flags: SenderFlags) -> str:
 
 
 def run_label_call(agent: LabelAgent, parsed: ParsedEmail, flags: SenderFlags) -> LabelResult:
-    return agent.run_sync(format_label_input(parsed, flags)).output
+    prompt = format_label_input(parsed, flags)
+    return call_with_backoff(lambda: agent.run_sync(prompt).output)

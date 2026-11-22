@@ -50,6 +50,9 @@ class State(StrEnum):
     NEEDS_REVIEW = "NEEDS_REVIEW"
 
 
+UNFINISHED_STATES = (State.NEW, State.CLASSIFYING, State.CLASSIFIED)
+
+
 @dataclass(frozen=True)
 class EmailRow:
     message_id: str
@@ -205,10 +208,12 @@ def delete_audit_rows(connection: sqlite3.Connection, message_id: str) -> str:
     return message_id
 
 
-def read_new_emails(connection: sqlite3.Connection) -> tuple[EmailRow, ...]:
+def read_unfinished_emails(connection: sqlite3.Connection) -> tuple[EmailRow, ...]:
+    placeholders = ", ".join("?" for _ in UNFINISHED_STATES)
     rows = connection.execute(
-        f"SELECT {EMAIL_COLUMNS} FROM emails WHERE state = ? ORDER BY internal_date",
-        (State.NEW,),
+        f"SELECT {EMAIL_COLUMNS} FROM emails WHERE state IN ({placeholders})"
+        f" ORDER BY internal_date",
+        UNFINISHED_STATES,
     ).fetchall()
     return tuple(to_email_row(row) for row in rows)
 

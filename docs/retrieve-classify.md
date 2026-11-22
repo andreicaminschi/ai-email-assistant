@@ -225,7 +225,8 @@ out, the email goes to `NEEDS_REVIEW`.
 | Failure | Handling |
 | --- | --- |
 | Invalid answer from any tree call | Pydantic-AI re-asks the model. After the retries run out, `NEEDS_REVIEW`. |
-| LLM call fails (API error, wrapper `502` or `504`) | Retry with backoff. Then `NEEDS_REVIEW`. |
+| LLM call fails (connection error, timeout, `429`, `5xx` including wrapper `502` or `504`) | Retry with backoff. Then `NEEDS_REVIEW`. |
+| LLM call rejected (any other `4xx`, such as `401`) | `NEEDS_REVIEW` with no retry. |
 | Google token refresh fails | Log which token failed, then exit non-zero. |
 | Gmail or Calendar API error, such as `429` or `5xx` | Not covered in the demo. |
 | Agent crashes mid-email | On restart the email resumes from its saved state, before any new mail. |

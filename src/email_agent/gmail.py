@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 HTTP_NOT_FOUND = 404
 
 def build_gmail(secrets_dir: Path) -> GmailResource:
-    credentials = load_credentials(secrets_dir / "gmail_token")
+    credentials = load_credentials(secrets_dir / "gmail_token", "Gmail")
     return build("gmail", "v1", credentials=credentials, cache_discovery=False)
 
 
