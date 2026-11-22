@@ -3,7 +3,7 @@ import sys
 from importlib.metadata import version
 
 from email_agent.config import SettingsError, load_settings, strip_and_drop_empty
-from email_agent.startup import StartupError, check_connection
+from email_agent.startup import StartupError, check_connection, set_up_labels
 
 
 def main() -> None:
@@ -14,11 +14,17 @@ def main() -> None:
         raise SystemExit(1) from None
     print(f"email-agent {version('email-agent')} starting as {settings.agent_email}")
     try:
-        check_connection(settings)
+        gmail, _calendar = check_connection(settings)
+        print("Connection ready")
+        label_setup = set_up_labels(gmail)
     except StartupError as error:
         print(error, file=sys.stderr)
         raise SystemExit(1) from None
-    print("Connection ready")
+    if label_setup.created_names:
+        print(f"Created labels: {', '.join(label_setup.created_names)}")
+    else:
+        print("Every label exists")
+    print(f"Labels ready: {len(label_setup.label_ids)}")
 
 
 if __name__ == "__main__":

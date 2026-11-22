@@ -17,3 +17,13 @@ def build_gmail(secrets_dir: Path) -> GmailResource:
 def get_account_email(gmail: GmailResource) -> str:
     profile = gmail.users().getProfile(userId="me").execute()
     return profile.get("emailAddress", "")
+
+
+def list_labels(gmail: GmailResource) -> list[tuple[str, str]]:
+    response = gmail.users().labels().list(userId="me").execute()
+    return [(label.get("name", ""), label.get("id", "")) for label in response.get("labels", [])]
+
+
+def create_label(gmail: GmailResource, name: str) -> str:
+    label = gmail.users().labels().create(userId="me", body={"name": name}).execute()
+    return label.get("id", "")
