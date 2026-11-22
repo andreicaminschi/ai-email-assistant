@@ -45,6 +45,8 @@ The LLM key is read from its file and passed to the provider. It's never put in 
 | --- | --- |
 | Body cut | 1000 characters |
 | Attempts per email | 3 |
+| LLM output retries per call | 2. See [llm-prompts.md](llm-prompts.md#retry-limits). |
+| LLM request retries | 3, after waiting 2, 4 and 8 seconds |
 | Approval "yes" words | `yes`, `approve`, `approved` |
 | Approval "no" words | `no`, `reject`, `rejected` |
 | Wrapper timeout | 120 seconds |
