@@ -9,6 +9,7 @@ from email_agent.google_auth import load_credentials
 
 if TYPE_CHECKING:
     from googleapiclient._apis.gmail.v1 import GmailResource  # pyright: ignore[reportMissingModuleSource]
+    from googleapiclient._apis.gmail.v1.schemas import Message  # pyright: ignore[reportMissingModuleSource]
 
 HTTP_NOT_FOUND = 404
 
@@ -140,3 +141,12 @@ def get_message_metadata(gmail: GmailResource, message_id: str) -> MessageMetada
         internal_date=int(message.get("internalDate", "0")),
         subject=subjects[0] if subjects else "",
     )
+
+
+def get_full_message(gmail: GmailResource, message_id: str) -> Message | None:
+    try:
+        return gmail.users().messages().get(userId="me", id=message_id, format="full").execute()
+    except HttpError as error:
+        if error.status_code == HTTP_NOT_FOUND:
+            return None
+        raise

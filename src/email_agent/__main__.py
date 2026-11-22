@@ -6,6 +6,7 @@ from importlib.metadata import version
 
 from email_agent.config import RunMode, SettingsError, load_settings, strip_and_drop_empty
 from email_agent.db import database_path, open_database
+from email_agent.message import ParsedEmail, fetch_parsed_email
 from email_agent.poller import poll_once
 from email_agent.startup import (
     SPAM_LABEL_ID,
@@ -15,6 +16,21 @@ from email_agent.startup import (
     reset_processed_emails,
     set_up_labels,
 )
+
+
+PREVIEW_LENGTH = 120
+
+
+def print_parsed_email(parsed: ParsedEmail) -> None:
+    sender = f"{parsed.from_name} <{parsed.from_address}>" if parsed.from_name else parsed.from_address
+    print(
+        f"  from {sender}, body {len(parsed.label_body)} chars,"
+        f" {len(parsed.links)} links, {len(parsed.attachments)} attachments"
+    )
+    preview = " ".join(parsed.follow_up_body.split())[:PREVIEW_LENGTH]
+    print(f"  follow-up: {preview}")
+    for attachment in parsed.attachments:
+        print(f"  attachment {attachment.name} {attachment.size} bytes")
 
 
 def main() -> None:
@@ -60,6 +76,11 @@ def main() -> None:
         result = poll_once(gmail, connection, sync_label_ids)
         for email in result.new_emails:
             print(f"{email.row.state} {email.row.message_id} {email.subject or '(no subject)'}")
+            parsed = fetch_parsed_email(gmail, email.row.message_id)
+            if parsed is None:
+                print(f"Skipped {email.row.message_id}: gone before parse")
+                continue
+            print_parsed_email(parsed)
         for message_id in result.gone_ids:
             print(f"Skipped {message_id}: gone before fetch")
         time.sleep(settings.poll_seconds)

@@ -107,8 +107,8 @@ branch's set.
 | `Reply-To` | Included when it differs from `From`. |
 | DMARC | The `dmarc=` result from Gmail's `Authentication-Results` header. External branch only. |
 | Bulk | A note that the sender is bulk, when code flagged it. |
-| Body | The `text/plain` part. With only `text/html`, the HTML is converted to text. Cut at 1000 characters. |
-| Links | A separate context list of every link in the whole body, not just the first 1000 characters. Each entry pairs the link text with the link's domain, not the full URL, read from `<a href>` in code. A plain-text body gives the domain only. Redirects aren't followed. |
+| Body | The `text/plain` part. With only `text/html`, the HTML is converted to text, and each link shows as its text followed by its domain: `here (cal.com)`. Cut at 1000 characters. |
+| Links | A separate context list of every link in the whole body, not just the first 1000 characters. Each entry pairs the link text with the link's domain, not the full URL, read from `<a href>` in code. The list reads the `text/html` part whenever the email has one, even when the body comes from `text/plain`. An email with no HTML part gives domains only. Redirects aren't followed. |
 | Attachments | File names and sizes. Contents are never sent. |
 
 ## What the times call sees

@@ -26,10 +26,14 @@ checks and LLM calls need, and the log shows a short summary of it.
 
 ## What to build
 
-- `text/plain` is preferred. With only `text/html`, the HTML is converted.
+- The full email is fetched by a second call after its `NEW` row is saved. The poller's
+  metadata call stays.
+- `text/plain` is preferred. With only `text/html`, the HTML is converted. The label-call
+  body shows a link as `here (cal.com)`, the follow-up body as `here`.
 - Both bodies are cut at 1000 characters after building. The links list covers the whole
   body.
-- A plain-text body gives each link's domain only.
+- The links list reads the HTML part whenever there is one. With no HTML part, each
+  plain-text URL gives its domain only.
 - Header lookup ignores case. Repeated headers, like `Authentication-Results`, keep every
   value in order.
 
