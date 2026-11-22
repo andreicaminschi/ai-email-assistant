@@ -1,0 +1,21 @@
+[project]
+name = "email-agent"
+version = "0.1.0"
+description = "AI email and calendar assistant"
+requires-python = ">=3.14"
+dependencies = [
+    "pydantic-ai-slim[anthropic,openai]",
+    "google-api-python-client",
+    "google-auth-oauthlib",
+]
+
+[dependency-groups]
+dev = ["pyright"]
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14"]
+build-backend = "uv_build"
+
+[tool.pyright]
+include = ["src"]
+typeCheckingMode = "strict"
