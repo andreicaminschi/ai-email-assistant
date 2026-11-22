@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from pydantic_ai.exceptions import AgentRunError, UnexpectedModelBehavior
 
+from email_agent.approval.flow import build_task_answer
 from email_agent.approval.forward import send_forward
 from email_agent.approval.reply_match import Answer, match_reply
 from email_agent.audit import Action, write_audit_entry
@@ -19,10 +20,16 @@ from email_agent.classify.models import Triage
 from email_agent.classify.tree import TreeAgents, classify_with_tree
 from email_agent.config import Settings
 from email_agent.db import (
+    ApprovalKind,
+    ApprovalRow,
     EmailRow,
     State,
+    close_approval,
     raise_attempts,
+    read_approval,
+    read_email,
     read_pending_approval,
+    read_send,
     set_email_classified,
     set_email_classifying,
     set_email_state,
@@ -105,24 +112,89 @@ def is_approval_reply(
     )
 
 
-def read_approval_reply(
-    connection: sqlite3.Connection, row: EmailRow, parsed: ParsedEmail
+def ignore_reply(
+    connection: sqlite3.Connection, row: EmailRow, answer: Answer, detail: str
 ) -> ProcessedEmail:
-    """A yes or no waits in APPROVAL_REPLY. No match is ignored and DONE."""
-    replying = set_email_state(connection, row.message_id, State.APPROVAL_REPLY)
-    answer = match_reply(parsed.follow_up_body)
-    if answer is not Answer.NO_MATCH:
-        return ProcessedEmail(row=replying, answer=answer)
+    write_audit_entry(
+        connection, row.message_id, row.thread_id, Action.IGNORE_REPLY, State.DONE, detail
+    )
+    done = set_email_state(connection, row.message_id, State.DONE)
+    return ProcessedEmail(row=done, answer=answer)
+
+
+def finish_original_email(
+    connection: sqlite3.Connection, approval: ApprovalRow, action: Action
+) -> EmailRow | None:
+    """Audit and DONE, once. None: the original row is gone."""
+    original = read_email(connection, approval.message_id)
+    if original is None or original.state is State.DONE:
+        return original
+    triage = read_saved_triage(original)
+    urgent = None if triage is None else triage.urgent
+    write_audit_entry(
+        connection,
+        original.message_id,
+        original.thread_id,
+        action,
+        State.DONE,
+        "",
+        approval.kind,
+        urgent,
+    )
+    return set_email_state(connection, original.message_id, State.DONE)
+
+
+def answer_approval(
+    connection: sqlite3.Connection,
+    gmail: GmailResource,
+    settings: Settings,
+    row: EmailRow,
+    answer: Answer,
+) -> ProcessedEmail:
+    """Send to the sender, close the approval, then both emails DONE."""
+    approval = read_approval(connection, row.thread_id)
+    if approval is None:
+        detail = "approval missing"
+        return ProcessedEmail(row=review_email(connection, row, detail), review_detail=detail)
+    if approval.kind is not ApprovalKind.TASK:
+        detail = "meeting answer not handled"
+        return ProcessedEmail(row=review_email(connection, row, detail), review_detail=detail)
+    task_answer = build_task_answer(approval, answer)
+    template = task_answer.outgoing.rendered.name
+    closed = approval.state is not State.AWAITING_APPROVAL
+    if closed and read_send(connection, row.message_id, template) is None:
+        # Another reply closed it
+        return ignore_reply(connection, row, answer, "approval already closed")
+    send_once(connection, gmail, settings, row.message_id, task_answer.outgoing)
+    if not closed:
+        close_approval(connection, approval.forward_thread_id)
+    finish_original_email(connection, approval, task_answer.action)
     write_audit_entry(
         connection,
         row.message_id,
         row.thread_id,
-        Action.IGNORE_REPLY,
+        task_answer.action,
         State.DONE,
-        "no decision word",
+        f"answer={answer}",
+        approval.kind,
     )
     done = set_email_state(connection, row.message_id, State.DONE)
     return ProcessedEmail(row=done, answer=answer)
+
+
+def read_approval_reply(
+    connection: sqlite3.Connection,
+    gmail: GmailResource,
+    settings: Settings,
+    row: EmailRow,
+    parsed: ParsedEmail,
+) -> ProcessedEmail:
+    """A yes or no answers the approval. No match is ignored and DONE."""
+    replying = set_email_state(connection, row.message_id, State.APPROVAL_REPLY)
+    answer = match_reply(parsed.follow_up_body)
+    if answer is Answer.NO_MATCH:
+        return ignore_reply(connection, replying, answer, "no decision word")
+    return answer_approval(connection, gmail, settings, replying, answer)
 
 
 def read_failure_detail(error: AgentRunError) -> str:
@@ -286,10 +358,12 @@ def process_email(
             if reason is not None:
                 return skip_email(connection, row, reason)
             if is_approval_reply(connection, parsed, settings):
-                return read_approval_reply(connection, row, parsed)
+                return read_approval_reply(connection, gmail, settings, row, parsed)
             return classify_and_dispatch(
                 connection, gmail, settings, agents, label_ids, row, parsed
             )
+        case State.APPROVAL_REPLY:
+            return read_approval_reply(connection, gmail, settings, row, parsed)
         case State.CLASSIFYING:
             return classify_and_dispatch(
                 connection, gmail, settings, agents, label_ids, row, parsed

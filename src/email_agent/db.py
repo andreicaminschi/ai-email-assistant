@@ -71,7 +71,13 @@ class State(StrEnum):
     NEEDS_REVIEW = "NEEDS_REVIEW"
 
 
-UNFINISHED_STATES = (State.NEW, State.CLASSIFYING, State.CLASSIFIED, State.ARCHIVED)
+UNFINISHED_STATES = (
+    State.NEW,
+    State.APPROVAL_REPLY,
+    State.CLASSIFYING,
+    State.CLASSIFIED,
+    State.ARCHIVED,
+)
 
 
 class SendState(StrEnum):
@@ -420,6 +426,15 @@ def read_pending_approval(
     if approval is None or approval.state is not State.AWAITING_APPROVAL:
         return None
     return approval
+
+
+def close_approval(connection: sqlite3.Connection, forward_thread_id: str) -> ApprovalRow:
+    row = connection.execute(
+        f"UPDATE approvals SET state = ?, updated_at = ? WHERE forward_thread_id = ?"
+        f" RETURNING {APPROVAL_COLUMNS}",
+        (State.DONE, utc_now(), forward_thread_id),
+    ).fetchone()
+    return to_approval_row(row)
 
 
 def read_history_id(connection: sqlite3.Connection) -> str | None:

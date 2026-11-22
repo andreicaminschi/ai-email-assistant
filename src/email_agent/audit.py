@@ -16,6 +16,8 @@ class Action(StrEnum):
     DECLINE_AND_ARCHIVE = "decline_and_archive"
     FORWARD_FOR_APPROVAL = "forward_for_approval"
     IGNORE_REPLY = "ignore_reply"
+    SEND_TASK_APPROVED = "send_task_approved"
+    SEND_TASK_REJECTED = "send_task_rejected"
 
 
 def format_audit_line(entry: AuditRow) -> str:

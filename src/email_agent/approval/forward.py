@@ -44,8 +44,9 @@ def build_task_forward(parsed: ParsedEmail, urgent: bool, manager_email: str) ->
     rendered = render_template(TemplateName.APPROVAL_TASK, values, urgent)
     # New thread: no threadId
     outgoing = OutgoingEmail(to=manager_email, rendered=rendered, thread_id=None, in_reply_to="")
+    answer_address = parsed.reply_to or parsed.from_address
     return ApprovalForward(
-        ApprovalKind.TASK, outgoing, parsed.from_address, sender_name, original_subject
+        ApprovalKind.TASK, outgoing, answer_address, sender_name, original_subject
     )
 
 

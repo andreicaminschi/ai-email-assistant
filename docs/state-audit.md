@@ -101,7 +101,7 @@ The email's own state moves on only after every send in its step is `SENT`.
 | `original_thread_id` | The original email's thread, T. Replies to the sender go there. |
 | `kind` | `MEETING` or `TASK`. |
 | `state` | `AWAITING_APPROVAL` or `DONE`. |
-| `sender_email`, `sender_name` | The original sender. |
+| `sender_email`, `sender_name` | The original sender. `sender_email` is the `Reply-To`, else the `From`: the answer goes there. |
 | `original_subject` | The original subject, without `Re:`. |
 | `meeting_start`, `meeting_end` | The event's start and end. Meetings only. |
 | `latest_sender_rfc_id` | The sender's `Message-ID`, for `In-Reply-To` and `References` on the reply to the sender. |
