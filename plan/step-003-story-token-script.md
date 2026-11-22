@@ -18,6 +18,7 @@ screens, and end up with a Gmail token and a Calendar token in `./secrets`.
 | File | Change |
 | --- | --- |
 | `scripts/make_tokens.py` | New. Reads `./secrets/client_secret.json`, runs the installed-app flow once per token, writes `gmail_token` and `calendar_token`. |
+| `pyproject.toml` | Pyright `include` also covers `scripts`. |
 
 ## What to build
 
@@ -28,10 +29,12 @@ screens, and end up with a Gmail token and a Calendar token in `./secrets`.
 - The script prints which account to sign in as before each consent, and which file it
   wrote after.
 - A missing `client_secret.json` prints where to download it and exits 1.
+- The account comes from `AGENT_EMAIL` in `.env`. A missing `AGENT_EMAIL` prints the
+  run command with `--env-file .env` and exits 1.
 
 ## Acceptance criteria
 
-- [ ] `uv run scripts/make_tokens.py` opens two consent screens in turn.
+- [ ] `uv run --env-file .env scripts/make_tokens.py` opens two consent screens in turn.
 - [ ] Both files exist in `./secrets`, and each holds a `refresh_token`.
 - [ ] The Gmail file lists only the Gmail scope, the Calendar file only Calendar scopes.
 - [ ] `uv run pyright` is clean.

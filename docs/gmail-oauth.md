@@ -124,5 +124,5 @@ When a token expires or is revoked, the agent can't recover on its own. Secrets 
 refreshed by running the token script again, which overwrites both files in `./secrets`:
 
 ```powershell
-uv run scripts/make_tokens.py
+uv run --env-file .env scripts/make_tokens.py
 ```
