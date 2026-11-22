@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from pydantic_ai.exceptions import AgentRunError, UnexpectedModelBehavior
 
-from email_agent.approval.flow import build_task_answer
+from email_agent.approval.flow import ApprovalAnswer, build_approval_answer
 from email_agent.approval.forward import send_forward
 from email_agent.approval.reply_match import Answer, match_reply
 from email_agent.audit import Action, write_audit_entry
@@ -18,9 +18,9 @@ from email_agent.checks import (
 )
 from email_agent.classify.models import Triage
 from email_agent.classify.tree import TreeAgents, classify_with_tree
-from email_agent.config import Settings
+from email_agent.calendar import book_meeting, has_event
+from email_agent.config import RunMode, Settings
 from email_agent.db import (
-    ApprovalKind,
     ApprovalRow,
     EmailRow,
     State,
@@ -41,6 +41,7 @@ from email_agent.message import ParsedEmail
 from email_agent.sender import send_once
 
 if TYPE_CHECKING:
+    from googleapiclient._apis.calendar.v3 import CalendarResource  # pyright: ignore[reportMissingModuleSource]
     from googleapiclient._apis.gmail.v1 import GmailResource  # pyright: ignore[reportMissingModuleSource]
 
 MAX_ATTEMPTS = 3
@@ -144,36 +145,55 @@ def finish_original_email(
     return set_email_state(connection, original.message_id, State.DONE)
 
 
+def is_answered_here(
+    connection: sqlite3.Connection,
+    calendar: CalendarResource,
+    settings: Settings,
+    row: EmailRow,
+    approval_answer: ApprovalAnswer,
+) -> bool:
+    """A closed approval: did this reply act before a crash."""
+    if approval_answer.outgoing is not None:
+        template = approval_answer.outgoing.rendered.name
+        return read_send(connection, row.message_id, template) is not None
+    if approval_answer.event is None or settings.run_mode is RunMode.DEV:
+        return False
+    return has_event(calendar, approval_answer.event.event_id)
+
+
 def answer_approval(
     connection: sqlite3.Connection,
     gmail: GmailResource,
+    calendar: CalendarResource,
     settings: Settings,
     row: EmailRow,
     answer: Answer,
 ) -> ProcessedEmail:
-    """Send to the sender, close the approval, then both emails DONE."""
+    """Send or book, close the approval, then both emails DONE."""
     approval = read_approval(connection, row.thread_id)
     if approval is None:
         detail = "approval missing"
         return ProcessedEmail(row=review_email(connection, row, detail), review_detail=detail)
-    if approval.kind is not ApprovalKind.TASK:
-        detail = "meeting answer not handled"
+    approval_answer = build_approval_answer(approval, answer)
+    if approval_answer is None:
+        detail = "meeting times missing"
         return ProcessedEmail(row=review_email(connection, row, detail), review_detail=detail)
-    task_answer = build_task_answer(approval, answer)
-    template = task_answer.outgoing.rendered.name
     closed = approval.state is not State.AWAITING_APPROVAL
-    if closed and read_send(connection, row.message_id, template) is None:
+    if closed and not is_answered_here(connection, calendar, settings, row, approval_answer):
         # Another reply closed it
         return ignore_reply(connection, row, answer, "approval already closed")
-    send_once(connection, gmail, settings, row.message_id, task_answer.outgoing)
+    if approval_answer.outgoing is not None:
+        send_once(connection, gmail, settings, row.message_id, approval_answer.outgoing)
+    if approval_answer.event is not None:
+        book_meeting(calendar, settings.run_mode, settings.time_zone, approval_answer.event)
     if not closed:
         close_approval(connection, approval.forward_thread_id)
-    finish_original_email(connection, approval, task_answer.action)
+    finish_original_email(connection, approval, approval_answer.action)
     write_audit_entry(
         connection,
         row.message_id,
         row.thread_id,
-        task_answer.action,
+        approval_answer.action,
         State.DONE,
         f"answer={answer}",
         approval.kind,
@@ -185,6 +205,7 @@ def answer_approval(
 def read_approval_reply(
     connection: sqlite3.Connection,
     gmail: GmailResource,
+    calendar: CalendarResource,
     settings: Settings,
     row: EmailRow,
     parsed: ParsedEmail,
@@ -194,7 +215,7 @@ def read_approval_reply(
     answer = match_reply(parsed.follow_up_body)
     if answer is Answer.NO_MATCH:
         return ignore_reply(connection, replying, answer, "no decision word")
-    return answer_approval(connection, gmail, settings, replying, answer)
+    return answer_approval(connection, gmail, calendar, settings, replying, answer)
 
 
 def read_failure_detail(error: AgentRunError) -> str:
@@ -347,6 +368,7 @@ def classify_and_dispatch(
 def process_email(
     connection: sqlite3.Connection,
     gmail: GmailResource,
+    calendar: CalendarResource,
     settings: Settings,
     agents: TreeAgents,
     label_ids: Mapping[str, str],
@@ -360,12 +382,12 @@ def process_email(
             if reason is not None:
                 return skip_email(connection, row, reason)
             if is_approval_reply(connection, parsed, settings):
-                return read_approval_reply(connection, gmail, settings, row, parsed)
+                return read_approval_reply(connection, gmail, calendar, settings, row, parsed)
             return classify_and_dispatch(
                 connection, gmail, settings, agents, label_ids, row, parsed
             )
         case State.APPROVAL_REPLY:
-            return read_approval_reply(connection, gmail, settings, row, parsed)
+            return read_approval_reply(connection, gmail, calendar, settings, row, parsed)
         case State.CLASSIFYING:
             return classify_and_dispatch(
                 connection, gmail, settings, agents, label_ids, row, parsed

@@ -34,6 +34,7 @@ from email_agent.startup import (
 )
 
 if TYPE_CHECKING:
+    from googleapiclient._apis.calendar.v3 import CalendarResource  # pyright: ignore[reportMissingModuleSource]
     from googleapiclient._apis.gmail.v1 import GmailResource  # pyright: ignore[reportMissingModuleSource]
 
 
@@ -114,6 +115,7 @@ def print_processed_email(processed: ProcessedEmail) -> None:
 def process_unfinished_emails(
     connection: sqlite3.Connection,
     gmail: GmailResource,
+    calendar: CalendarResource,
     settings: Settings,
     agents: TreeAgents,
     label_ids: Mapping[str, str],
@@ -131,7 +133,7 @@ def process_unfinished_emails(
         print(f"{row.state} {row.message_id} {parsed.subject or '(no subject)'}")
         print_parsed_email(parsed)
         processed = process_email(
-            connection, gmail, settings, agents, label_ids, started.row, parsed
+            connection, gmail, calendar, settings, agents, label_ids, started.row, parsed
         )
         print_processed_email(processed)
     return len(rows)
@@ -140,16 +142,17 @@ def process_unfinished_emails(
 def run_poll_loop(
     connection: sqlite3.Connection,
     gmail: GmailResource,
+    calendar: CalendarResource,
     settings: Settings,
     agents: TreeAgents,
     label_ids: Mapping[str, str],
 ) -> None:
     sync_label_ids = ["INBOX"] if settings.run_mode is RunMode.DEV else ["INBOX", "UNREAD"]
-    resumed_count = process_unfinished_emails(connection, gmail, settings, agents, label_ids)
+    resumed_count = process_unfinished_emails(connection, gmail, calendar, settings, agents, label_ids)
     print(f"Resumed {resumed_count} unfinished emails")
     while True:
         result = poll_once(gmail, connection, sync_label_ids)
-        process_unfinished_emails(connection, gmail, settings, agents, label_ids)
+        process_unfinished_emails(connection, gmail, calendar, settings, agents, label_ids)
         for message_id in result.gone_ids:
             print(f"Skipped {message_id}: gone before fetch")
         time.sleep(settings.poll_seconds)
@@ -168,7 +171,7 @@ def main() -> None:
         print(error, file=sys.stderr)
         raise SystemExit(1) from None
     try:
-        gmail, _calendar = check_connection(settings)
+        gmail, calendar = check_connection(settings)
         print("Connection ready")
         label_setup = set_up_labels(gmail, list_agent_label_names(settings.run_mode))
     except StartupError as error:
@@ -199,7 +202,7 @@ def main() -> None:
         for message_id in dev_reset.dropped_ids:
             print(f"Dropped {message_id}: gone from Gmail")
     try:
-        run_poll_loop(connection, gmail, settings, agents, label_setup.label_ids)
+        run_poll_loop(connection, gmail, calendar, settings, agents, label_setup.label_ids)
     except TokenError as error:
         print(format_token_error(error.service_name, error), file=sys.stderr)
         raise SystemExit(1) from None

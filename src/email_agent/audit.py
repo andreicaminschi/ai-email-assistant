@@ -19,6 +19,8 @@ class Action(StrEnum):
     IGNORE_REPLY = "ignore_reply"
     SEND_TASK_APPROVED = "send_task_approved"
     SEND_TASK_REJECTED = "send_task_rejected"
+    CREATE_EVENT = "create_event"
+    SEND_MEETING_DECLINE = "send_meeting_decline"
 
 
 def format_audit_line(entry: AuditRow) -> str:
