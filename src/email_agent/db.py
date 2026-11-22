@@ -194,6 +194,14 @@ def delete_audit_rows(connection: sqlite3.Connection, message_id: str) -> str:
     return message_id
 
 
+def read_new_emails(connection: sqlite3.Connection) -> tuple[EmailRow, ...]:
+    rows = connection.execute(
+        f"SELECT {EMAIL_COLUMNS} FROM emails WHERE state = ? ORDER BY internal_date",
+        (State.NEW,),
+    ).fetchall()
+    return tuple(to_email_row(row) for row in rows)
+
+
 def read_processed_emails(connection: sqlite3.Connection) -> tuple[EmailRow, ...]:
     rows = connection.execute(
         f"SELECT {EMAIL_COLUMNS} FROM emails WHERE state != ? ORDER BY internal_date",

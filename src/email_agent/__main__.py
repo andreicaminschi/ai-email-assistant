@@ -6,7 +6,7 @@ from importlib.metadata import version
 
 from email_agent.checks import SenderFlags
 from email_agent.config import RunMode, SettingsError, load_settings, strip_and_drop_empty
-from email_agent.db import EmailRow, database_path, open_database
+from email_agent.db import EmailRow, database_path, delete_email, open_database, read_new_emails
 from email_agent.message import ParsedEmail, fetch_parsed_email
 from email_agent.poller import poll_once
 from email_agent.process import process_email
@@ -83,14 +83,14 @@ def main() -> None:
     sync_label_ids = ["INBOX"] if settings.run_mode is RunMode.DEV else ["INBOX", "UNREAD"]
     while True:
         result = poll_once(gmail, connection, sync_label_ids)
-        for email in result.new_emails:
-            print(f"{email.row.state} {email.row.message_id} {email.subject or '(no subject)'}")
-            parsed = fetch_parsed_email(gmail, email.row.message_id)
+        for row in read_new_emails(connection):
+            parsed = fetch_parsed_email(gmail, row.message_id)
             if parsed is None:
-                print(f"Skipped {email.row.message_id}: gone before parse")
+                print(f"Dropped {delete_email(connection, row.message_id)}: gone before parse")
                 continue
+            print(f"{row.state} {row.message_id} {parsed.subject or '(no subject)'}")
             print_parsed_email(parsed)
-            processed = process_email(connection, settings, email.row, parsed)
+            processed = process_email(connection, settings, row, parsed)
             if processed.flags is not None:
                 print(format_flags_line(processed.row, processed.flags))
         for message_id in result.gone_ids:
