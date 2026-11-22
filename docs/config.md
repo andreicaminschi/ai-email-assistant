@@ -46,3 +46,4 @@ The LLM key is read from its file and passed to the provider. It's never put in 
 | Attempts per email | 3 |
 | Approval "yes" words | `yes`, `approve`, `approved` |
 | Approval "no" words | `no`, `reject`, `rejected` |
+| Wrapper timeout | 120 seconds |

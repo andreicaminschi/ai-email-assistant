@@ -34,8 +34,10 @@ in [containers.md](containers.md).
 
 `claude setup-token` runs once on the host and prints a long-lived token. The token goes
 into `./secrets/claude_token` and reaches only the `wrapper` container, at
-`/run/secrets/claude_token`. The wrapper reads it and sets `CLAUDE_CODE_OAUTH_TOKEN` for
-each `claude -p` run. The token doesn't refresh, so nothing is ever written back.
+`/run/secrets/claude_token`. The wrapper reads `$SECRETS_DIR/claude_token` once at startup,
+with `/run/secrets` as the default, and stops with one line if the file is missing. On the
+host, set `SECRETS_DIR=./secrets`. The wrapper sets `CLAUDE_CODE_OAUTH_TOKEN` for each
+`claude -p` run only. The token doesn't refresh, so nothing is ever written back.
 
 ## System prompt
 
@@ -44,11 +46,35 @@ new prompt is kept minimal but not empty:
 
 | Part | Content |
 | --- | --- |
-| Fixed line | Draft: "Reply with one JSON object that matches the schema below. Output nothing else." |
+| Fixed line | "Reply with one JSON object that matches the schema below. No code fences, no other text." |
 | Request's prompt | The system prompt Pydantic-AI sent, unchanged |
 | Schema | The `final_result` tool's JSON schema |
 
-The fixed line's wording is a draft and will be settled during implementation.
+The fixed line bans code fences because the wrapper never strips them, and a fenced reply
+fails validation.
+
+## The prompt and the run
+
+`claude -p` takes one prompt text, so every non-system message is joined in order with a
+role tag. On a retry Claude then sees its own bad answer and the validation error:
+
+| Message | Prompt line |
+| --- | --- |
+| user: the email | `User: <email>` |
+| assistant: `final_result` call | `Assistant: {"label": "FOO"}` |
+| tool: the validation error | `Tool: <error>` |
+
+The joined text goes in on stdin. The run's flags:
+
+| Flag | Why |
+| --- | --- |
+| `--model <request model>` | `LLM_MODEL=openai:sonnet` runs `sonnet`. |
+| `--system-prompt` | Replaces Claude Code's default prompt. |
+| `--tools ""` | No tools. |
+| `--setting-sources ""`, `--strict-mcp-config` | No user or project settings, hooks or MCP servers. |
+| `--no-session-persistence` | Nothing saved per run. |
+
+Each run's working folder is an empty temp folder, so no `CLAUDE.md` is found.
 
 ## One classify request
 
