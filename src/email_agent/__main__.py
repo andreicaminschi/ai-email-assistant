@@ -74,6 +74,17 @@ def format_meeting_line(message_id: str, triage: Triage) -> str:
     return f"MEETING {message_id} {date_part} {time_part}"
 
 
+def format_flag_line(name: str, message_id: str, flag: bool, evidence: str | None) -> str:
+    """
+    @example
+    format_flag_line("URGENT", "18c2", True, "needed today")
+    # → 'URGENT 18c2 yes ("needed today")'
+    """
+    if not flag:
+        return f"{name} {message_id} no"
+    return f'{name} {message_id} yes ("{evidence}")'
+
+
 def print_processed_email(processed: ProcessedEmail) -> None:
     if processed.flags is not None:
         print(format_flags_line(processed.row, processed.flags))
@@ -84,6 +95,14 @@ def print_processed_email(processed: ProcessedEmail) -> None:
         )
         if processed.triage.label is Label.MEETING_REQUEST:
             print(format_meeting_line(processed.row.message_id, processed.triage))
+        triage = processed.triage
+        message_id = processed.row.message_id
+        if triage.is_invoice is not None:
+            print(
+                format_flag_line("INVOICE", message_id, triage.is_invoice, triage.invoice_evidence)
+            )
+        if triage.urgent is not None:
+            print(format_flag_line("URGENT", message_id, triage.urgent, triage.evidence))
     if processed.error is not None:
         print(f"LLM call failed {processed.row.message_id}: {processed.error}")
     if processed.review_detail is not None:

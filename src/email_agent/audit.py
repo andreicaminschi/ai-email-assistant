@@ -10,6 +10,8 @@ class Action(StrEnum):
     NONE = "none"
     LABEL_ONLY = "label_only"
     NONE_UNCLASSIFIED = "none_unclassified"
+    FINANCE_AND_ARCHIVE = "finance_and_archive"
+    MOVE_TO_SPAM = "move_to_spam"
 
 
 def format_audit_line(entry: AuditRow) -> str:

@@ -125,7 +125,14 @@ def dispatch_email(
             gmail, row.message_id, list(result.add_label_ids), list(result.remove_label_ids)
         )
     write_audit_entry(
-        connection, row.message_id, row.thread_id, result.action, result.state, "", triage.label
+        connection,
+        row.message_id,
+        row.thread_id,
+        result.action,
+        result.state,
+        "",
+        triage.label,
+        triage.urgent,
     )
     done = set_email_state(connection, row.message_id, result.state)
     return ProcessedEmail(row=done, flags=flags, triage=triage)

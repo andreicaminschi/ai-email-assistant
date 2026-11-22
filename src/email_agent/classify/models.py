@@ -42,6 +42,24 @@ class TimesResult(BaseModel):
     )
 
 
+class InvoiceResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    is_invoice: bool
+    evidence: str | None = Field(
+        default=None, description="The exact words in the email that show it, or empty."
+    )
+
+
+class UrgentResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    urgent: bool
+    evidence: str | None = Field(
+        default=None, description="The exact words in the email that show it, or empty."
+    )
+
+
 class Triage(BaseModel):
     model_config = ConfigDict(frozen=True)
 
