@@ -29,8 +29,8 @@ sender who gave no explicit date is asked for one, and I'm not bothered.
 - Start is `meeting_date` at `meeting_time`, or at `MEETING_DEFAULT_TIME`. End is start
   plus `MEETING_DURATION_MINUTES`.
 - No calendar is read. Availability isn't checked in v1.
-- Dev mode (`RUN_MODE=dev`): the forward and Ask for a date and time both go through
-  `sender.py`, so they're printed, not sent.
+- Dev mode (`RUN_MODE=dev`): the forward is really sent to `MANAGER_EMAIL`, as in step
+  022. Ask for a date and time goes to the sender, so it's printed, not sent.
 
 ## Acceptance criteria
 

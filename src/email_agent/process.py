@@ -236,6 +236,8 @@ def run_handler(
             settings.run_mode,
             settings.send_sales_decline,
             settings.manager_email,
+            settings.meeting_default_time,
+            settings.meeting_duration_minutes,
         )
     )
 

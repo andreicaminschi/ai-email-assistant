@@ -1,8 +1,14 @@
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import time
 from types import MappingProxyType
 
-from email_agent.approval.forward import ApprovalForward, build_task_forward
+from email_agent.approval.forward import (
+    ApprovalForward,
+    build_meeting_forward,
+    build_task_forward,
+    read_meeting_slot,
+)
 from email_agent.audit import Action
 from email_agent.classify.models import Label, Triage
 from email_agent.config import RunMode
@@ -31,6 +37,8 @@ class HandlerInput:
     run_mode: RunMode
     send_sales_decline: bool
     manager_email: str
+    meeting_default_time: time
+    meeting_duration_minutes: int
 
 
 @dataclass(frozen=True)
@@ -75,12 +83,13 @@ def read_archive_changes(handler_input: HandlerInput) -> ArchiveChanges:
     return ArchiveChanges((), (INBOX_LABEL_ID,))
 
 
-def build_sales_decline(parsed: ParsedEmail) -> OutgoingEmail:
+def build_sender_reply(parsed: ParsedEmail, template: TemplateName) -> OutgoingEmail:
+    """A reply in the sender's thread, to Reply-To or From."""
     values = {
         "sender_name": read_sender_name(parsed.from_name, parsed.from_address),
         "original_subject": strip_reply_prefix(parsed.subject),
     }
-    rendered = render_template(TemplateName.SALES_DECLINE, values, urgent=False)
+    rendered = render_template(template, values, urgent=False)
     return OutgoingEmail(
         to=parsed.reply_to or parsed.from_address,
         rendered=rendered,
@@ -111,7 +120,7 @@ def decline_and_archive(handler_input: HandlerInput) -> HandlerResult:
         (),
         Action.DECLINE_AND_ARCHIVE,
         State.DONE,
-        sends=(build_sales_decline(handler_input.parsed),),
+        sends=(build_sender_reply(handler_input.parsed, TemplateName.SALES_DECLINE),),
         archive=read_archive_changes(handler_input),
     )
 
@@ -151,6 +160,35 @@ def forward_task(handler_input: HandlerInput) -> HandlerResult:
     )
 
 
+def forward_meeting(handler_input: HandlerInput) -> HandlerResult:
+    """With a date: forward to the manager. Without: ask the sender for one."""
+    triage = handler_input.triage
+    if triage.meeting_date is None:
+        return HandlerResult(
+            read_tag_ids(handler_input),
+            (),
+            Action.ASK_FOR_DATE,
+            State.DONE,
+            sends=(build_sender_reply(handler_input.parsed, TemplateName.ASK_FOR_DATE),),
+        )
+    slot = read_meeting_slot(
+        triage.meeting_date,
+        triage.meeting_time,
+        handler_input.meeting_default_time,
+        handler_input.meeting_duration_minutes,
+    )
+    forward = build_meeting_forward(
+        handler_input.parsed, bool(triage.urgent), handler_input.manager_email, slot
+    )
+    return HandlerResult(
+        read_tag_ids(handler_input),
+        (),
+        Action.FORWARD_FOR_APPROVAL,
+        State.AWAITING_APPROVAL,
+        forward=forward,
+    )
+
+
 def do_nothing(_handler_input: HandlerInput) -> HandlerResult:
     return HandlerResult((), (), Action.NONE_UNCLASSIFIED, State.DONE)
 
@@ -161,7 +199,7 @@ EXTERNAL_HANDLERS: Mapping[Label, Handler] = MappingProxyType(
         Label.SALES_OUTREACH: decline_and_archive,
         Label.INFO_ONLY: file_info_only,
         Label.SPAM: move_to_spam,
-        Label.MEETING_REQUEST: tag_with_label,
+        Label.MEETING_REQUEST: forward_meeting,
         Label.TASK: forward_task,
         Label.UNCLASSIFIED: do_nothing,
     }

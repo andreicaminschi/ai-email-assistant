@@ -15,6 +15,7 @@ class Action(StrEnum):
     ARCHIVE = "archive"
     DECLINE_AND_ARCHIVE = "decline_and_archive"
     FORWARD_FOR_APPROVAL = "forward_for_approval"
+    ASK_FOR_DATE = "ask_for_date"
     IGNORE_REPLY = "ignore_reply"
     SEND_TASK_APPROVED = "send_task_approved"
     SEND_TASK_REJECTED = "send_task_rejected"
