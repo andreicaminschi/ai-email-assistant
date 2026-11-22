@@ -1,3 +1,4 @@
+import base64
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -54,6 +55,40 @@ def modify_labels(
         body={"addLabelIds": add_label_ids, "removeLabelIds": remove_label_ids},
     ).execute()
     return message_id
+
+
+def send_raw_message(gmail: GmailResource, raw: bytes, thread_id: str | None) -> str:
+    """Sends a MIME message and returns its threadId."""
+    encoded = base64.urlsafe_b64encode(raw).decode("ascii")
+    body: Message = {"raw": encoded} if thread_id is None else {"raw": encoded, "threadId": thread_id}
+    sent = gmail.users().messages().send(userId="me", body=body).execute()
+    return sent.get("threadId", "")
+
+
+def find_sent_thread_id(
+    gmail: GmailResource, to: str, subject: str, header_name: str, header_value: str
+) -> str | None:
+    """
+    @example
+    find_sent_thread_id(gmail, "dana@x.com", "Re: Hi", "X-Agent-Send-Id", "9f1c")  # → "18c2..." or None
+    """
+    query = f'to:{to} subject:"{subject.replace('"', " ")}"'
+    response = gmail.users().messages().list(userId="me", labelIds=["SENT"], q=query).execute()
+    for found in response.get("messages", []):
+        message = (
+            gmail.users()
+            .messages()
+            .get(userId="me", id=found.get("id", ""), format="metadata", metadataHeaders=[header_name])
+            .execute()
+        )
+        values = [
+            header.get("value", "")
+            for header in message.get("payload", {}).get("headers", [])
+            if header.get("name", "").casefold() == header_name.casefold()
+        ]
+        if header_value in values:
+            return message.get("threadId", "")
+    return None
 
 
 class HistoryExpired(Exception):

@@ -18,10 +18,11 @@ from email_agent.db import (
     set_email_classifying,
     set_email_state,
 )
-from email_agent.dispatch import HandlerInput, find_handler
+from email_agent.dispatch import HandlerInput, HandlerResult, find_handler
 from email_agent.gmail import modify_labels
 from email_agent.llm import is_transient
 from email_agent.message import ParsedEmail
+from email_agent.sender import send_once
 
 if TYPE_CHECKING:
     from googleapiclient._apis.gmail.v1 import GmailResource  # pyright: ignore[reportMissingModuleSource]
@@ -105,6 +106,60 @@ def classify_email(
     return ProcessedEmail(row=classified, flags=flags, triage=triage)
 
 
+def run_handler(
+    settings: Settings,
+    label_ids: Mapping[str, str],
+    parsed: ParsedEmail,
+    flags: SenderFlags,
+    triage: Triage,
+) -> HandlerResult:
+    handler = find_handler(flags.internal, triage.label)
+    return handler(
+        HandlerInput(parsed, triage, label_ids, settings.run_mode, settings.send_sales_decline)
+    )
+
+
+def run_handler_steps(
+    connection: sqlite3.Connection,
+    gmail: GmailResource,
+    settings: Settings,
+    row: EmailRow,
+    result: HandlerResult,
+) -> EmailRow:
+    """Labels, sends, then archive."""
+    if result.add_label_ids or result.remove_label_ids:
+        modify_labels(
+            gmail, row.message_id, list(result.add_label_ids), list(result.remove_label_ids)
+        )
+    for outgoing in result.sends:
+        send_once(connection, gmail, settings, row.message_id, outgoing)
+    if result.archive is None:
+        return row
+    modify_labels(
+        gmail,
+        row.message_id,
+        list(result.archive.add_label_ids),
+        list(result.archive.remove_label_ids),
+    )
+    return set_email_state(connection, row.message_id, State.ARCHIVED)
+
+
+def finish_email(
+    connection: sqlite3.Connection, row: EmailRow, triage: Triage, result: HandlerResult
+) -> EmailRow:
+    write_audit_entry(
+        connection,
+        row.message_id,
+        row.thread_id,
+        result.action,
+        result.state,
+        "",
+        triage.label,
+        triage.urgent,
+    )
+    return set_email_state(connection, row.message_id, result.state)
+
+
 def dispatch_email(
     connection: sqlite3.Connection,
     gmail: GmailResource,
@@ -118,23 +173,26 @@ def dispatch_email(
     flags = classified.flags
     if row.state is not State.CLASSIFIED or triage is None or flags is None:
         return classified
-    handler = find_handler(flags.internal, triage.label)
-    result = handler(HandlerInput(parsed, triage, label_ids, settings.run_mode))
-    if result.add_label_ids or result.remove_label_ids:
-        modify_labels(
-            gmail, row.message_id, list(result.add_label_ids), list(result.remove_label_ids)
-        )
-    write_audit_entry(
-        connection,
-        row.message_id,
-        row.thread_id,
-        result.action,
-        result.state,
-        "",
-        triage.label,
-        triage.urgent,
-    )
-    done = set_email_state(connection, row.message_id, result.state)
+    result = run_handler(settings, label_ids, parsed, flags, triage)
+    stepped = run_handler_steps(connection, gmail, settings, row, result)
+    done = finish_email(connection, stepped, triage, result)
+    return ProcessedEmail(row=done, flags=flags, triage=triage)
+
+
+def finish_archived_email(
+    connection: sqlite3.Connection,
+    settings: Settings,
+    label_ids: Mapping[str, str],
+    row: EmailRow,
+    parsed: ParsedEmail,
+) -> ProcessedEmail:
+    """Writes the audit, then DONE."""
+    flags = read_sender_flags(parsed, settings)
+    triage = read_saved_triage(row)
+    if triage is None:
+        return ProcessedEmail(row=review_email(connection, row, "triage missing"), flags=flags)
+    result = run_handler(settings, label_ids, parsed, flags, triage)
+    done = finish_email(connection, row, triage, result)
     return ProcessedEmail(row=done, flags=flags, triage=triage)
 
 
@@ -180,5 +238,7 @@ def process_email(
                 row=row, flags=read_sender_flags(parsed, settings), triage=read_saved_triage(row)
             )
             return dispatch_email(connection, gmail, settings, label_ids, saved, parsed)
+        case State.ARCHIVED:
+            return finish_archived_email(connection, settings, label_ids, row, parsed)
         case _:
             return ProcessedEmail(row=row)

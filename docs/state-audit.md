@@ -9,7 +9,7 @@ What the agent saves about each email, and the audit trail it leaves.
 | Tables | One SQLite table per concern: `emails`, `approvals`, `sends`, `audit`, `meta`. |
 | `emails` | One row per message ID, with its Gmail `thread_id`, state and attempt count. |
 | `approvals` | One row per forward, keyed by the forward's thread ID. It points back to the original email. Details in [Tables](#tables). |
-| `sends` | One row per outgoing email, keyed by the message ID being processed and the template. It holds the generated `Message-ID` and the send state. Details in [Send states](#send-states). |
+| `sends` | One row per outgoing email, keyed by the message ID being processed and the template. It holds the generated send ID and the send state. Details in [Send states](#send-states). |
 | `meta` | The saved Gmail `historyId`. |
 | Audit store | Each entry is written to the `audit` table and printed to stdout as a JSON line. The table is the durable record, and stdout shows the live run. |
 | Who writes entries | The engine, after every handler and every approval reply. Handlers never write entries. |
@@ -65,7 +65,7 @@ knows which one went out.
 
 | State | Meaning |
 | --- | --- |
-| `SENDING` | The `Message-ID` is saved and the send may or may not have happened. A rerun checks Sent first. |
+| `SENDING` | The send ID is saved and the send may or may not have happened. A rerun checks Sent first. |
 | `SENT` | The email went out. |
 
 The row key is the message ID being processed plus the template name.
@@ -113,7 +113,7 @@ The email's own state moves on only after every send in its step is `SENT`.
 | --- | --- |
 | `message_id` | The Gmail message being processed. Primary key, with `template`. |
 | `template` | The template name. |
-| `rfc_message_id` | The `Message-ID` generated for the send. |
+| `send_id` | The ID generated for the send, sent as the `X-Agent-Send-Id` header. |
 | `state` | `SENDING` or `SENT`. |
 
 `meta`: key and value pairs. The only key is `history_id`.

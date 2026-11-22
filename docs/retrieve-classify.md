@@ -245,18 +245,22 @@ one.
 Each send has its own row in the `sends` table, keyed by the message ID being processed
 plus the template. The send states are in [state-audit.md](state-audit.md#send-states).
 
-The guard assumes Gmail keeps the `Message-ID` header the agent sets. This isn't verified
-up front for the demo.
+The key travels in an `X-Agent-Send-Id` header. Gmail replaces any `Message-ID` the agent
+sets, so that header can't carry it. Gmail keeps custom headers, but can't search them.
+A rerun searches Sent by recipient and subject, then reads the header of each match.
 
 ```mermaid
 flowchart TD
     A[Send needed] --> R{sends row for this message and template?}
-    R -- none --> B[Generate Message-ID]
-    B --> C[Save the row as SENDING with the Message-ID]
-    C --> D[Send with that Message-ID header]
+    R -- none --> B[Generate a send ID]
+    B --> C[Save the row as SENDING with the send ID]
+    C --> D[Send with the X-Agent-Send-Id header]
     D --> E[Save the row as SENT]
     R -- SENT --> E2[Skip the send]
-    R -- SENDING --> Q{Sent has rfc822msgid:id?}
+    R -- SENDING --> Q{A Sent email to that address, with that subject, carries the send ID?}
     Q -- yes --> E
     Q -- no --> D
 ```
+
+In dev the agent sends nothing. It prints `DEV would send <template> to <address>` and
+writes no `sends` row.

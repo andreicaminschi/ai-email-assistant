@@ -12,6 +12,8 @@ class Action(StrEnum):
     NONE_UNCLASSIFIED = "none_unclassified"
     FINANCE_AND_ARCHIVE = "finance_and_archive"
     MOVE_TO_SPAM = "move_to_spam"
+    ARCHIVE = "archive"
+    DECLINE_AND_ARCHIVE = "decline_and_archive"
 
 
 def format_audit_line(entry: AuditRow) -> str:

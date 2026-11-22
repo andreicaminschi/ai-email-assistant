@@ -33,6 +33,13 @@ CREATE TABLE IF NOT EXISTS audit (
     outcome TEXT NOT NULL,
     detail TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS sends (
+    message_id TEXT NOT NULL,
+    template TEXT NOT NULL,
+    send_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    PRIMARY KEY (message_id, template)
+);
 """
 
 EMAIL_COLUMNS = "message_id, thread_id, internal_date, state, attempts, internal, triage, updated_at"
@@ -50,7 +57,20 @@ class State(StrEnum):
     NEEDS_REVIEW = "NEEDS_REVIEW"
 
 
-UNFINISHED_STATES = (State.NEW, State.CLASSIFYING, State.CLASSIFIED)
+UNFINISHED_STATES = (State.NEW, State.CLASSIFYING, State.CLASSIFIED, State.ARCHIVED)
+
+
+class SendState(StrEnum):
+    SENDING = "SENDING"
+    SENT = "SENT"
+
+
+@dataclass(frozen=True)
+class SendRow:
+    message_id: str
+    template: str
+    send_id: str
+    state: SendState
 
 
 @dataclass(frozen=True)
@@ -252,6 +272,34 @@ def read_known_ids(connection: sqlite3.Connection, message_ids: list[str]) -> fr
         f"SELECT message_id FROM emails WHERE message_id IN ({placeholders})", message_ids
     ).fetchall()
     return frozenset(str(row[0]) for row in rows)
+
+
+def read_send(connection: sqlite3.Connection, message_id: str, template: str) -> SendRow | None:
+    row = connection.execute(
+        "SELECT send_id, state FROM sends WHERE message_id = ? AND template = ?",
+        (message_id, template),
+    ).fetchone()
+    if row is None:
+        return None
+    return SendRow(message_id, template, str(row[0]), SendState(row[1]))
+
+
+def insert_send(
+    connection: sqlite3.Connection, message_id: str, template: str, send_id: str
+) -> SendRow:
+    connection.execute(
+        "INSERT INTO sends (message_id, template, send_id, state) VALUES (?, ?, ?, ?)",
+        (message_id, template, send_id, SendState.SENDING),
+    )
+    return SendRow(message_id, template, send_id, SendState.SENDING)
+
+
+def set_send_sent(connection: sqlite3.Connection, send: SendRow) -> SendRow:
+    connection.execute(
+        "UPDATE sends SET state = ? WHERE message_id = ? AND template = ?",
+        (SendState.SENT, send.message_id, send.template),
+    )
+    return SendRow(send.message_id, send.template, send.send_id, SendState.SENT)
 
 
 def read_history_id(connection: sqlite3.Connection) -> str | None:
