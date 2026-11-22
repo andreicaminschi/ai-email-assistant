@@ -7,7 +7,8 @@ from importlib.metadata import version
 from typing import TYPE_CHECKING
 
 from email_agent.checks import SenderFlags
-from email_agent.classify.label import LabelAgent, build_label_agent
+from email_agent.classify.models import Label, Triage
+from email_agent.classify.tree import TreeAgents, build_tree_agents
 from email_agent.config import RunMode, Settings, SettingsError, load_settings, strip_and_drop_empty
 from email_agent.db import (
     EmailRow,
@@ -58,6 +59,21 @@ def format_flags_line(row: EmailRow, flags: SenderFlags) -> str:
     )
 
 
+def format_meeting_line(message_id: str, triage: Triage) -> str:
+    """
+    @example
+    format_meeting_line("18c2", triage)
+    # → 'MEETING 18c2 date=2026-11-26 ("Thu 26 Nov") time=14:00 ("at 14:00")'
+    """
+    date_part = f"date={triage.meeting_date or 'none'}"
+    if triage.date_quote:
+        date_part += f' ("{triage.date_quote}")'
+    time_part = f"time={triage.meeting_time.strftime('%H:%M') if triage.meeting_time else 'none'}"
+    if triage.time_quote:
+        time_part += f' ("{triage.time_quote}")'
+    return f"MEETING {message_id} {date_part} {time_part}"
+
+
 def print_processed_email(processed: ProcessedEmail) -> None:
     if processed.flags is not None:
         print(format_flags_line(processed.row, processed.flags))
@@ -66,8 +82,10 @@ def print_processed_email(processed: ProcessedEmail) -> None:
             f"{processed.row.state} {processed.row.message_id}"
             f" {processed.triage.label}: {processed.triage.reason}"
         )
+        if processed.triage.label is Label.MEETING_REQUEST:
+            print(format_meeting_line(processed.row.message_id, processed.triage))
     if processed.error is not None:
-        print(f"Label call failed {processed.row.message_id}: {processed.error}")
+        print(f"LLM call failed {processed.row.message_id}: {processed.error}")
     if processed.review_detail is not None:
         print(f"{processed.row.state} {processed.row.message_id}: {processed.review_detail}")
 
@@ -76,7 +94,7 @@ def process_unfinished_emails(
     connection: sqlite3.Connection,
     gmail: GmailResource,
     settings: Settings,
-    label_agent: LabelAgent,
+    agents: TreeAgents,
     label_ids: Mapping[str, str],
 ) -> int:
     rows = read_unfinished_emails(connection)
@@ -92,7 +110,7 @@ def process_unfinished_emails(
         print(f"{row.state} {row.message_id} {parsed.subject or '(no subject)'}")
         print_parsed_email(parsed)
         processed = process_email(
-            connection, gmail, settings, label_agent, label_ids, started.row, parsed
+            connection, gmail, settings, agents, label_ids, started.row, parsed
         )
         print_processed_email(processed)
     return len(rows)
@@ -102,15 +120,15 @@ def run_poll_loop(
     connection: sqlite3.Connection,
     gmail: GmailResource,
     settings: Settings,
-    label_agent: LabelAgent,
+    agents: TreeAgents,
     label_ids: Mapping[str, str],
 ) -> None:
     sync_label_ids = ["INBOX"] if settings.run_mode is RunMode.DEV else ["INBOX", "UNREAD"]
-    resumed_count = process_unfinished_emails(connection, gmail, settings, label_agent, label_ids)
+    resumed_count = process_unfinished_emails(connection, gmail, settings, agents, label_ids)
     print(f"Resumed {resumed_count} unfinished emails")
     while True:
         result = poll_once(gmail, connection, sync_label_ids)
-        process_unfinished_emails(connection, gmail, settings, label_agent, label_ids)
+        process_unfinished_emails(connection, gmail, settings, agents, label_ids)
         for message_id in result.gone_ids:
             print(f"Skipped {message_id}: gone before fetch")
         time.sleep(settings.poll_seconds)
@@ -124,7 +142,7 @@ def main() -> None:
         raise SystemExit(1) from None
     print(f"email-agent {version('email-agent')} starting as {settings.agent_email}")
     try:
-        label_agent = build_label_agent(build_model(settings))
+        agents = build_tree_agents(build_model(settings))
     except LlmConfigError as error:
         print(error, file=sys.stderr)
         raise SystemExit(1) from None
@@ -160,7 +178,7 @@ def main() -> None:
         for message_id in dev_reset.dropped_ids:
             print(f"Dropped {message_id}: gone from Gmail")
     try:
-        run_poll_loop(connection, gmail, settings, label_agent, label_setup.label_ids)
+        run_poll_loop(connection, gmail, settings, agents, label_setup.label_ids)
     except TokenError as error:
         print(format_token_error(error.service_name, error), file=sys.stderr)
         raise SystemExit(1) from None

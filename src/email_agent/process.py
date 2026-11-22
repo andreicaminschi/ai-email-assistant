@@ -7,8 +7,8 @@ from pydantic_ai.exceptions import AgentRunError, UnexpectedModelBehavior
 
 from email_agent.audit import Action, write_audit_entry
 from email_agent.checks import SenderFlags, is_auto_reply, is_own_mail, read_sender_flags
-from email_agent.classify.label import LabelAgent, run_label_call
 from email_agent.classify.models import Triage
+from email_agent.classify.tree import TreeAgents, classify_with_tree
 from email_agent.config import Settings
 from email_agent.db import (
     EmailRow,
@@ -90,18 +90,17 @@ def read_failure_detail(error: AgentRunError) -> str:
 
 def classify_email(
     connection: sqlite3.Connection,
-    label_agent: LabelAgent,
+    agents: TreeAgents,
     row: EmailRow,
     parsed: ParsedEmail,
     flags: SenderFlags,
 ) -> ProcessedEmail:
     try:
-        result = run_label_call(label_agent, parsed, flags)
+        triage = classify_with_tree(agents, parsed, flags)
     except AgentRunError as error:
         detail = read_failure_detail(error)
         reviewed = review_email(connection, row, detail)
         return ProcessedEmail(row=reviewed, flags=flags, error=str(error), review_detail=detail)
-    triage = Triage(label=result.label, reason=result.reason)
     classified = set_email_classified(connection, row.message_id, triage.model_dump_json())
     return ProcessedEmail(row=classified, flags=flags, triage=triage)
 
@@ -136,14 +135,14 @@ def classify_and_dispatch(
     connection: sqlite3.Connection,
     gmail: GmailResource,
     settings: Settings,
-    label_agent: LabelAgent,
+    agents: TreeAgents,
     label_ids: Mapping[str, str],
     row: EmailRow,
     parsed: ParsedEmail,
 ) -> ProcessedEmail:
     flags = read_sender_flags(parsed, settings)
     classifying = set_email_classifying(connection, row.message_id, flags.internal)
-    classified = classify_email(connection, label_agent, classifying, parsed, flags)
+    classified = classify_email(connection, agents, classifying, parsed, flags)
     return dispatch_email(connection, gmail, settings, label_ids, classified, parsed)
 
 
@@ -151,7 +150,7 @@ def process_email(
     connection: sqlite3.Connection,
     gmail: GmailResource,
     settings: Settings,
-    label_agent: LabelAgent,
+    agents: TreeAgents,
     label_ids: Mapping[str, str],
     row: EmailRow,
     parsed: ParsedEmail,
@@ -163,11 +162,11 @@ def process_email(
             if reason is not None:
                 return skip_email(connection, row, reason)
             return classify_and_dispatch(
-                connection, gmail, settings, label_agent, label_ids, row, parsed
+                connection, gmail, settings, agents, label_ids, row, parsed
             )
         case State.CLASSIFYING:
             return classify_and_dispatch(
-                connection, gmail, settings, label_agent, label_ids, row, parsed
+                connection, gmail, settings, agents, label_ids, row, parsed
             )
         case State.CLASSIFIED:
             saved = ProcessedEmail(

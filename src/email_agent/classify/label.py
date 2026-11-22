@@ -2,8 +2,8 @@ from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
 from email_agent.checks import SenderFlags
-from email_agent.classify.models import LabelResult
-from email_agent.llm import OUTPUT_RETRIES, call_with_backoff
+from email_agent.classify.models import InternalLabelResult, LabelResult
+from email_agent.llm import OUTPUT_RETRIES
 from email_agent.message import ParsedEmail
 
 SHARED_RULES = """\
@@ -41,7 +41,24 @@ Hints from code:
 
 {SHARED_RULES}"""
 
+INTERNAL_PROMPT = f"""\
+You label one email sent to a manager's inbox by a colleague inside the company.
+Pick exactly one label from this list, and give a one-sentence reason.
+
+MEETING_REQUEST: the sender wants to meet or set up a call.
+TASK: the sender asks the manager to approve or reject something.
+UNCLASSIFIED: fits none of the above, including requests that can't be approved or
+rejected.
+
+Examples:
+"Can we grab 30 minutes to go over the hiring plan?" -> MEETING_REQUEST
+"Need your sign-off on the conference travel budget" -> TASK
+"Can you review my slides before Thursday?" -> UNCLASSIFIED
+
+{SHARED_RULES}"""
+
 type LabelAgent = Agent[None, LabelResult]
+type InternalLabelAgent = Agent[None, InternalLabelResult]
 
 
 def build_label_agent(model: Model) -> LabelAgent:
@@ -49,6 +66,15 @@ def build_label_agent(model: Model) -> LabelAgent:
         model,
         output_type=LabelResult,
         system_prompt=EXTERNAL_PROMPT,
+        retries={"output": OUTPUT_RETRIES},
+    )
+
+
+def build_internal_label_agent(model: Model) -> InternalLabelAgent:
+    return Agent(
+        model,
+        output_type=InternalLabelResult,
+        system_prompt=INTERNAL_PROMPT,
         retries={"output": OUTPUT_RETRIES},
     )
 
@@ -71,17 +97,13 @@ def format_label_input(parsed: ParsedEmail, flags: SenderFlags) -> str:
     ]
     if parsed.reply_to and parsed.reply_to.casefold() != parsed.from_address.casefold():
         lines.append(f"Reply-To: {parsed.reply_to}")
-    lines.append(f"DMARC: {flags.dmarc or 'none'}")
-    if flags.bulk:
-        lines.append("Bulk: yes, the sender is flagged as bulk mail")
+    if not flags.internal:
+        lines.append(f"DMARC: {flags.dmarc or 'none'}")
+        if flags.bulk:
+            lines.append("Bulk: yes, the sender is flagged as bulk mail")
     attachments = [f"{item.name} ({item.size} bytes)" for item in parsed.attachments]
     lines.append(f"Attachments: {', '.join(attachments) or 'none'}")
     links = [f"{link.text} ({link.domain})" if link.text else link.domain for link in parsed.links]
     lines.append(f"Links: {', '.join(links) or 'none'}")
     lines.extend(["Body:", parsed.label_body])
     return "\n".join(lines)
-
-
-def run_label_call(agent: LabelAgent, parsed: ParsedEmail, flags: SenderFlags) -> LabelResult:
-    prompt = format_label_input(parsed, flags)
-    return call_with_backoff(lambda: agent.run_sync(prompt).output)
