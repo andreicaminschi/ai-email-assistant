@@ -6,8 +6,15 @@ from typing import TYPE_CHECKING
 from pydantic_ai.exceptions import AgentRunError, UnexpectedModelBehavior
 
 from email_agent.approval.forward import send_forward
+from email_agent.approval.reply_match import Answer, match_reply
 from email_agent.audit import Action, write_audit_entry
-from email_agent.checks import SenderFlags, is_auto_reply, is_own_mail, read_sender_flags
+from email_agent.checks import (
+    SenderFlags,
+    is_auto_reply,
+    is_own_mail,
+    read_dmarc,
+    read_sender_flags,
+)
 from email_agent.classify.models import Triage
 from email_agent.classify.tree import TreeAgents, classify_with_tree
 from email_agent.config import Settings
@@ -15,6 +22,7 @@ from email_agent.db import (
     EmailRow,
     State,
     raise_attempts,
+    read_pending_approval,
     set_email_classified,
     set_email_classifying,
     set_email_state,
@@ -39,6 +47,7 @@ class ProcessedEmail:
     triage: Triage | None = None
     error: str | None = None
     review_detail: str | None = None
+    answer: Answer | None = None
 
 
 def read_saved_triage(row: EmailRow) -> Triage | None:
@@ -83,6 +92,37 @@ def skip_email(connection: sqlite3.Connection, row: EmailRow, reason: str) -> Pr
         connection, row.message_id, row.thread_id, Action.NONE, State.SKIPPED, reason
     )
     return ProcessedEmail(row=skipped)
+
+
+def is_approval_reply(
+    connection: sqlite3.Connection, parsed: ParsedEmail, settings: Settings
+) -> bool:
+    """The manager, DMARC pass, in a forward's thread still awaiting approval."""
+    return (
+        parsed.from_address.casefold() == settings.manager_email.casefold()
+        and read_dmarc(parsed.headers) == "pass"
+        and read_pending_approval(connection, parsed.thread_id) is not None
+    )
+
+
+def read_approval_reply(
+    connection: sqlite3.Connection, row: EmailRow, parsed: ParsedEmail
+) -> ProcessedEmail:
+    """A yes or no waits in APPROVAL_REPLY. No match is ignored and DONE."""
+    replying = set_email_state(connection, row.message_id, State.APPROVAL_REPLY)
+    answer = match_reply(parsed.follow_up_body)
+    if answer is not Answer.NO_MATCH:
+        return ProcessedEmail(row=replying, answer=answer)
+    write_audit_entry(
+        connection,
+        row.message_id,
+        row.thread_id,
+        Action.IGNORE_REPLY,
+        State.DONE,
+        "no decision word",
+    )
+    done = set_email_state(connection, row.message_id, State.DONE)
+    return ProcessedEmail(row=done, answer=answer)
 
 
 def read_failure_detail(error: AgentRunError) -> str:
@@ -245,6 +285,8 @@ def process_email(
             reason = read_skip_reason(parsed, settings)
             if reason is not None:
                 return skip_email(connection, row, reason)
+            if is_approval_reply(connection, parsed, settings):
+                return read_approval_reply(connection, row, parsed)
             return classify_and_dispatch(
                 connection, gmail, settings, agents, label_ids, row, parsed
             )

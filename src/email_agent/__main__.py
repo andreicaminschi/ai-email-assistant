@@ -103,6 +103,8 @@ def print_processed_email(processed: ProcessedEmail) -> None:
             )
         if triage.urgent is not None:
             print(format_flag_line("URGENT", message_id, triage.urgent, triage.evidence))
+    if processed.answer is not None:
+        print(f"APPROVAL_REPLY {processed.row.message_id} answer={processed.answer}")
     if processed.error is not None:
         print(f"LLM call failed {processed.row.message_id}: {processed.error}")
     if processed.review_detail is not None:

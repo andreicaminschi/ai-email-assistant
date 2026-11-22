@@ -413,6 +413,15 @@ def read_approval(connection: sqlite3.Connection, forward_thread_id: str) -> App
     return None if row is None else to_approval_row(row)
 
 
+def read_pending_approval(
+    connection: sqlite3.Connection, forward_thread_id: str
+) -> ApprovalRow | None:
+    approval = read_approval(connection, forward_thread_id)
+    if approval is None or approval.state is not State.AWAITING_APPROVAL:
+        return None
+    return approval
+
+
 def read_history_id(connection: sqlite3.Connection) -> str | None:
     row = connection.execute("SELECT value FROM meta WHERE key = ?", (HISTORY_ID_KEY,)).fetchone()
     return None if row is None else str(row[0])
