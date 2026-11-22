@@ -1,0 +1,15 @@
+From: Sam Ortiz <sam@supplier.example.com>
+To: {{AGENT_EMAIL}}
+Subject: Please approve our revised quote
+Content-Type: text/plain; charset=utf-8
+
+Hi,
+
+Following our call, we've revised the quote for the office hardware order. The new
+total is EUR 12,400, down from EUR 13,100, with delivery in two weeks.
+
+Please approve the revised quote so we can place the order.
+
+Best regards,
+Sam Ortiz
+Supplier Inc.

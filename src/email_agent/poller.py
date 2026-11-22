@@ -9,7 +9,7 @@ from email_agent.gmail import (
     get_history_id,
     get_message_metadata,
     list_added_inbox_ids,
-    list_unread_inbox_ids,
+    list_message_ids,
 )
 
 if TYPE_CHECKING:
@@ -28,22 +28,26 @@ class PollResult:
     gone_ids: tuple[str, ...]
 
 
-def full_sync(gmail: GmailResource) -> tuple[list[str], str]:
+def full_sync(gmail: GmailResource, sync_label_ids: list[str]) -> tuple[list[str], str]:
     history_id = get_history_id(gmail)
-    return list_unread_inbox_ids(gmail), history_id
+    return list_message_ids(gmail, sync_label_ids), history_id
 
 
-def list_new_ids(gmail: GmailResource, saved_history_id: str | None) -> tuple[list[str], str]:
+def list_new_ids(
+    gmail: GmailResource, saved_history_id: str | None, sync_label_ids: list[str]
+) -> tuple[list[str], str]:
     if saved_history_id is None:
-        return full_sync(gmail)
+        return full_sync(gmail, sync_label_ids)
     try:
         return list_added_inbox_ids(gmail, saved_history_id)
     except HistoryExpired:
-        return full_sync(gmail)
+        return full_sync(gmail, sync_label_ids)
 
 
-def poll_once(gmail: GmailResource, connection: sqlite3.Connection) -> PollResult:
-    message_ids, history_id = list_new_ids(gmail, read_history_id(connection))
+def poll_once(
+    gmail: GmailResource, connection: sqlite3.Connection, sync_label_ids: list[str]
+) -> PollResult:
+    message_ids, history_id = list_new_ids(gmail, read_history_id(connection), sync_label_ids)
     known_ids = read_known_ids(connection, message_ids)
     unknown_ids = [message_id for message_id in message_ids if message_id not in known_ids]
     fetched = {message_id: get_message_metadata(gmail, message_id) for message_id in unknown_ids}

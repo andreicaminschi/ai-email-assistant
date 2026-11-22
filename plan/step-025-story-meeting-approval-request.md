@@ -1,6 +1,6 @@
 # Step 025 — Story: Meeting forward or date request
 
-**Type:** Story · **Slice:** Slice 5 · **Depends on:** 024
+**Type:** Story · **Slice:** Slice 5 · **Depends on:** 024, 030
 
 ## Goal
 
@@ -29,6 +29,8 @@ sender who gave no explicit date is asked for one, and I'm not bothered.
 - Start is `meeting_date` at `meeting_time`, or at `MEETING_DEFAULT_TIME`. End is start
   plus `MEETING_DURATION_MINUTES`.
 - No calendar is read. Availability isn't checked in v1.
+- Dev mode (`RUN_MODE=dev`): the forward and Ask for a date and time both go through
+  `sender.py`, so they're printed, not sent.
 
 ## Acceptance criteria
 
@@ -37,6 +39,8 @@ sender who gave no explicit date is asked for one, and I'm not bothered.
 - [ ] "Thu 26 Nov at 14:00" names 14:00–14:30.
 - [ ] "Can we meet next week?" sends the sender "Could you send a specific date and
       time ..." in their thread, and the manager gets nothing.
+- [ ] In dev, `ext-meeting-no-date` logs `DEV would send ask_for_date to <sender>` and
+      nothing reaches Sent.
 - [ ] `uv run pyright` is clean.
 
 ## Out of scope

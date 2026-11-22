@@ -1,0 +1,6 @@
+From: {{AGENT_EMAIL}}
+To: {{AGENT_EMAIL}}
+Subject: Note to self
+Content-Type: text/plain; charset=utf-8
+
+This email comes from the agent's own address, so the agent skips it.

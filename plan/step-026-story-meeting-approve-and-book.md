@@ -1,6 +1,6 @@
 # Step 026 — Story: Meeting booking or decline
 
-**Type:** Story · **Slice:** Slice 5 · **Depends on:** 025
+**Type:** Story · **Slice:** Slice 5 · **Depends on:** 025, 030
 
 ## Goal
 
@@ -26,6 +26,9 @@ no sends the sender a polite decline. This closes slice 5.
 - Event ID: the forward's thread ID. Title: the original subject. Attendee: the sender.
 - Yes: audit action `create_event`. No: audit action `send_meeting_decline`.
 - Both close the approval and the original email as `DONE`.
+- Dev mode (`RUN_MODE=dev`): the event insert in `calendar.py` is the one switch. It
+  calls no Calendar API and prints `DEV would book <start>-<end> <title>`. The decline
+  goes through `sender.py`, so it's printed too.
 
 ## Acceptance criteria
 
@@ -34,6 +37,7 @@ no sends the sender a polite decline. This closes slice 5.
 - [ ] A no sends the sender "Unfortunately we can't make Thu 26 Nov 10:00–10:30.".
 - [ ] Resetting the reply to `APPROVAL_REPLY` in SQLite and restarting creates no second
       event.
+- [ ] In dev, a yes creates no event and the log shows `DEV would book ...`.
 - [ ] `uv run pyright` is clean.
 
 ## Out of scope

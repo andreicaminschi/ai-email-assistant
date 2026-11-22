@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from datetime import time
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -9,6 +10,11 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PositiveInt,
 
 class SettingsError(Exception):
     pass
+
+
+class RunMode(StrEnum):
+    DEV = "dev"
+    PROD = "prod"
 
 
 def split_list(value: object) -> object:
@@ -35,6 +41,7 @@ class Settings(BaseModel):
 
     agent_email: str = Field(alias="AGENT_EMAIL")
     manager_email: str = Field(alias="MANAGER_EMAIL")
+    run_mode: RunMode = Field(alias="RUN_MODE")
     llm_model: str = Field(alias="LLM_MODEL")
     llm_base_url: str | None = Field(default=None, alias="LLM_BASE_URL")
     internal_domains: LowerCaseList = Field(default=(), alias="INTERNAL_DOMAINS")

@@ -1,0 +1,11 @@
+From: Radu Ionescu <radu@acme.com>
+To: {{AGENT_EMAIL}}
+Subject: Meet Thu 26 Nov?
+Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=acme.com; dkim=pass header.d=acme.com; dmarc=pass (p=REJECT) header.from=acme.com
+Content-Type: text/plain; charset=utf-8
+
+Hi,
+
+Can we meet Thu 26 Nov at 11:00 to plan the next sprint?
+
+Radu

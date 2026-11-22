@@ -4,10 +4,17 @@ import sys
 import time
 from importlib.metadata import version
 
-from email_agent.config import SettingsError, load_settings, strip_and_drop_empty
+from email_agent.config import RunMode, SettingsError, load_settings, strip_and_drop_empty
 from email_agent.db import database_path, open_database
 from email_agent.poller import poll_once
-from email_agent.startup import StartupError, check_connection, set_up_labels
+from email_agent.startup import (
+    SPAM_LABEL_ID,
+    StartupError,
+    check_connection,
+    list_agent_label_names,
+    reset_processed_emails,
+    set_up_labels,
+)
 
 
 def main() -> None:
@@ -20,7 +27,7 @@ def main() -> None:
     try:
         gmail, _calendar = check_connection(settings)
         print("Connection ready")
-        label_setup = set_up_labels(gmail)
+        label_setup = set_up_labels(gmail, list_agent_label_names(settings.run_mode))
     except StartupError as error:
         print(error, file=sys.stderr)
         raise SystemExit(1) from None
@@ -36,8 +43,21 @@ def main() -> None:
         print(f"Could not open database {db_path}: {error}", file=sys.stderr)
         raise SystemExit(1) from None
     print(f"Database ready: {db_path}")
+    if settings.run_mode is RunMode.DEV:
+        agent_label_ids = [
+            label_id for label_id in label_setup.label_ids.values() if label_id != SPAM_LABEL_ID
+        ]
+        try:
+            dev_reset = reset_processed_emails(gmail, connection, agent_label_ids)
+        except StartupError as error:
+            print(error, file=sys.stderr)
+            raise SystemExit(1) from None
+        print(f"Dev reset: {len(dev_reset.reset_ids)} emails")
+        for message_id in dev_reset.dropped_ids:
+            print(f"Dropped {message_id}: gone from Gmail")
+    sync_label_ids = ["INBOX"] if settings.run_mode is RunMode.DEV else ["INBOX", "UNREAD"]
     while True:
-        result = poll_once(gmail, connection)
+        result = poll_once(gmail, connection, sync_label_ids)
         for email in result.new_emails:
             print(f"{email.row.state} {email.row.message_id} {email.subject or '(no subject)'}")
         for message_id in result.gone_ids:

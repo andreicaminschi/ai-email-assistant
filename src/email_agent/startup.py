@@ -1,3 +1,4 @@
+import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -6,8 +7,9 @@ from typing import TYPE_CHECKING
 from googleapiclient.errors import HttpError
 
 from email_agent.calendar import build_calendar, get_primary_calendar_id
-from email_agent.config import Settings
-from email_agent.gmail import build_gmail, create_label, get_account_email, list_labels
+from email_agent.config import RunMode, Settings
+from email_agent.db import delete_email, read_processed_emails, reset_email
+from email_agent.gmail import build_gmail, create_label, get_account_email, list_labels, remove_labels
 from email_agent.google_auth import TokenError, TokenMissing
 
 if TYPE_CHECKING:
@@ -24,6 +26,7 @@ REQUIRED_LABELS = (
     "URGENT",
     "Finance",
 )
+DEV_LABELS = ("This is spam", "This is archived")
 SPAM_LABEL_ID = "SPAM"
 
 
@@ -35,6 +38,18 @@ class StartupError(Exception):
 class LabelSetup:
     label_ids: Mapping[str, str]
     created_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DevReset:
+    reset_ids: tuple[str, ...]
+    dropped_ids: tuple[str, ...]
+
+
+def list_agent_label_names(run_mode: RunMode) -> tuple[str, ...]:
+    if run_mode is RunMode.DEV:
+        return REQUIRED_LABELS + DEV_LABELS
+    return REQUIRED_LABELS
 
 
 def format_token_error(service_name: str, error: TokenError) -> str:
@@ -79,7 +94,7 @@ def create_missing_label(gmail: GmailResource, name: str) -> str:
         raise StartupError(f"Could not create Gmail label {name}: {error.reason}") from None
 
 
-def set_up_labels(gmail: GmailResource) -> LabelSetup:
+def set_up_labels(gmail: GmailResource, label_names: tuple[str, ...]) -> LabelSetup:
     try:
         existing_labels = list_labels(gmail)
     except HttpError as error:
@@ -87,10 +102,27 @@ def set_up_labels(gmail: GmailResource) -> LabelSetup:
     ids_by_folded_name = {name.casefold(): label_id for name, label_id in existing_labels}
     found_ids = {
         name: ids_by_folded_name[name.casefold()]
-        for name in REQUIRED_LABELS
+        for name in label_names
         if name.casefold() in ids_by_folded_name
     }
-    created_names = tuple(name for name in REQUIRED_LABELS if name not in found_ids)
+    created_names = tuple(name for name in label_names if name not in found_ids)
     created_ids = {name: create_missing_label(gmail, name) for name in created_names}
     label_ids = {**found_ids, **created_ids, "SPAM": SPAM_LABEL_ID}
     return LabelSetup(MappingProxyType(label_ids), created_names)
+
+
+def reset_processed_emails(
+    gmail: GmailResource, connection: sqlite3.Connection, agent_label_ids: list[str]
+) -> DevReset:
+    reset_ids: list[str] = []
+    dropped_ids: list[str] = []
+    for row in read_processed_emails(connection):
+        try:
+            still_in_gmail = remove_labels(gmail, row.message_id, agent_label_ids)
+        except HttpError as error:
+            raise StartupError(format_api_error("Gmail", error)) from None
+        if still_in_gmail:
+            reset_ids.append(reset_email(connection, row.message_id).message_id)
+        else:
+            dropped_ids.append(delete_email(connection, row.message_id))
+    return DevReset(tuple(reset_ids), tuple(dropped_ids))

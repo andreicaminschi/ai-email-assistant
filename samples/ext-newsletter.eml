@@ -1,0 +1,20 @@
+From: The Weekly Byte <news@weeklybyte.example.com>
+To: {{AGENT_EMAIL}}
+Subject: The Weekly Byte #142: edge caching, Rust in the kernel, and more
+List-Unsubscribe: <https://weeklybyte.example.com/unsubscribe>
+List-Id: The Weekly Byte <weekly.weeklybyte.example.com>
+Precedence: bulk
+Content-Type: text/plain; charset=utf-8
+
+Hi there,
+
+Here's what happened in tech this week.
+
+1. Edge caching gets cheaper: three CDNs cut their prices.
+2. More Rust drivers land in the Linux kernel.
+3. Our pick of the week: a tiny static site generator.
+
+Read the full issue on our website.
+
+You're receiving this because you subscribed to The Weekly Byte.
+Unsubscribe: https://weeklybyte.example.com/unsubscribe

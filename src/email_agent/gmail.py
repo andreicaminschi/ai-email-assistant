@@ -32,6 +32,18 @@ def create_label(gmail: GmailResource, name: str) -> str:
     return label.get("id", "")
 
 
+def remove_labels(gmail: GmailResource, message_id: str, label_ids: list[str]) -> bool:
+    try:
+        gmail.users().messages().modify(
+            userId="me", id=message_id, body={"removeLabelIds": label_ids}
+        ).execute()
+    except HttpError as error:
+        if error.status_code == HTTP_NOT_FOUND:
+            return False
+        raise
+    return True
+
+
 class HistoryExpired(Exception):
     pass
 
@@ -81,7 +93,7 @@ def list_added_inbox_ids(gmail: GmailResource, start_history_id: str) -> tuple[l
             return list(dict.fromkeys(message_ids)), response.get("historyId", start_history_id)
 
 
-def list_unread_inbox_ids(gmail: GmailResource) -> list[str]:
+def list_message_ids(gmail: GmailResource, label_ids: list[str]) -> list[str]:
     message_ids: list[str] = []
     page_token: str | None = None
     while True:
@@ -90,7 +102,7 @@ def list_unread_inbox_ids(gmail: GmailResource) -> list[str]:
             .messages()
             .list(
                 userId="me",
-                labelIds=["INBOX", "UNREAD"],
+                labelIds=label_ids,
                 pageToken=page_token,
             )
             .execute()

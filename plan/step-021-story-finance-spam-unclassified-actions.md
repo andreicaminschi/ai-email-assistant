@@ -1,6 +1,6 @@
 # Step 021 — Story: Invoice call, spam and unclassified handlers
 
-**Type:** Story · **Slice:** Slice 3 · **Depends on:** 020, 013
+**Type:** Story · **Slice:** Slice 3 · **Depends on:** 020, 013, 030
 
 ## Goal
 
@@ -30,6 +30,9 @@ left alone. This closes slice 3.
 - This is generate-and-verify, like the urgent call.
 - Audit actions: `finance_and_archive`, `label_only`, `move_to_spam`,
   `none_unclassified`.
+- Dev mode (`RUN_MODE=dev`): the invoice archive uses step 020's archive helper, so it
+  adds `This is archived`. `SPAM` adds the `This is spam` label instead of `SPAM`, and
+  `INBOX` stays.
 
 ## Acceptance criteria
 
@@ -37,6 +40,8 @@ left alone. This closes slice 3.
       The log shows the invoice evidence.
 - [ ] "FYI, our office is closed Friday" shows `INFO_ONLY` only and stays in the inbox.
 - [ ] A phishing test email lands in Spam.
+- [ ] In dev, `ext-phishing` stays in the inbox with `This is spam`, and `ext-invoice`
+      stays with `INFO_ONLY`, `Finance` and `This is archived`.
 - [ ] An email that fits no label stays in the inbox with no label, and the audit line
       shows `none_unclassified`.
 - [ ] `uv run pyright` is clean.

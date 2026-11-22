@@ -155,6 +155,25 @@ happens after the manager's yes or no is in [approval.md](approval.md).
 `urgent: true`, before any approval. `SPAM` and `UNCLASSIFIED` skip the urgent call, so
 they never get `URGENT`.
 
+## Dev mode
+
+With `RUN_MODE=dev`, nothing leaves the inbox and nothing is sent or booked. Labels are
+added as in prod. Every send and booking is printed as `DEV would send <template> to
+<address>` or `DEV would book <start>-<end> <title>`.
+
+| Label | Prod Gmail result | Dev Gmail result |
+| --- | --- | --- |
+| `MARKETING` | `MARKETING`, archived | `MARKETING`, `This is archived` |
+| `SALES_OUTREACH` | `SALES_OUTREACH`, decline sent, archived | `SALES_OUTREACH`, `This is archived`, decline printed |
+| `INFO_ONLY`, invoice | `INFO_ONLY`, `Finance`, archived | `INFO_ONLY`, `Finance`, `This is archived` |
+| `SPAM` | Moved to Spam | `This is spam`, stays in the inbox |
+| `MEETING_REQUEST`, `TASK` | Label, forward or date request sent | Label, the send printed |
+
+Each dev start removes every agent label from emails past `NEW`, including `URGENT`,
+`Finance` and the two dev labels, and puts their rows back to `NEW`. The same inbox is
+then processed again. A dev full sync picks up read inbox mail too, so opening a sample
+in Gmail doesn't hide it.
+
 ## Step order
 
 Code runs each handler's steps in a fixed order: labels first, then sends, then archive.

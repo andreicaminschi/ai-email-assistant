@@ -1,0 +1,18 @@
+From: Billing <billing@hostingco.example.com>
+To: {{AGENT_EMAIL}}
+Subject: Invoice #4512 for October
+Content-Type: text/plain; charset=utf-8
+
+Hello,
+
+Your invoice for October is ready.
+
+Invoice number: 4512
+Period: 1-31 October 2026
+Amount due: EUR 249.00
+Due date: 30 November 2026
+
+The amount will be charged to the card on file. No action is needed.
+
+Thank you for your business,
+HostingCo Billing

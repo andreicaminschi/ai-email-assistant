@@ -112,6 +112,30 @@ def set_email_state(connection: sqlite3.Connection, message_id: str, state: Stat
     return to_email_row(row)
 
 
+def read_processed_emails(connection: sqlite3.Connection) -> tuple[EmailRow, ...]:
+    rows = connection.execute(
+        f"SELECT {EMAIL_COLUMNS} FROM emails WHERE state != ? ORDER BY internal_date",
+        (State.NEW,),
+    ).fetchall()
+    return tuple(to_email_row(row) for row in rows)
+
+
+def reset_email(connection: sqlite3.Connection, message_id: str) -> EmailRow:
+    row = connection.execute(
+        f"UPDATE emails SET state = ?, attempts = 0, internal = NULL, triage = NULL,"
+        f" updated_at = ? WHERE message_id = ? RETURNING {EMAIL_COLUMNS}",
+        (State.NEW, utc_now(), message_id),
+    ).fetchone()
+    if row is None:
+        raise EmailNotFound(message_id)
+    return to_email_row(row)
+
+
+def delete_email(connection: sqlite3.Connection, message_id: str) -> str:
+    connection.execute("DELETE FROM emails WHERE message_id = ?", (message_id,))
+    return message_id
+
+
 def read_known_ids(connection: sqlite3.Connection, message_ids: list[str]) -> frozenset[str]:
     if not message_ids:
         return frozenset()

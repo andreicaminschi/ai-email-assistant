@@ -1,0 +1,13 @@
+From: Elena Popescu <elena@acme.com>
+To: {{AGENT_EMAIL}}
+Subject: Need approval for PTO tomorrow, urgent
+Authentication-Results: mx.google.com; spf=pass smtp.mailfrom=acme.com; dkim=pass header.d=acme.com; dmarc=pass (p=REJECT) header.from=acme.com
+Content-Type: text/plain; charset=utf-8
+
+Hi,
+
+A family matter came up and I need to take PTO tomorrow. Can you approve it today? My
+tickets are handed over to Radu.
+
+Thanks,
+Elena

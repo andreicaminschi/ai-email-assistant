@@ -1,6 +1,6 @@
 # Step 020 — Story: Marketing and sales handlers
 
-**Type:** Story · **Slice:** Slice 3 · **Depends on:** 018, 019
+**Type:** Story · **Slice:** Slice 3 · **Depends on:** 018, 019, 030
 
 ## Goal
 
@@ -32,6 +32,10 @@ email is archived without a reply. A restart never sends the same email twice.
   `SEND_SALES_DECLINE=false`.
 - Audit actions: `decline_and_archive`, or `archive` when no send went out.
 - The email's state moves on only after every send in its step is `SENT`.
+- Dev mode (`RUN_MODE=dev`): `sender.py` is the one switch for every send. It writes no
+  `sends` row, calls no Gmail send, and prints `DEV would send <template> to <address>`.
+- Dev mode: archive adds the `This is archived` label instead of removing `INBOX`. The
+  dispatch archive helper is the one switch, and step 021 reuses it.
 
 ## Acceptance criteria
 
@@ -40,6 +44,9 @@ email is archived without a reply. A restart never sends the same email twice.
 - [ ] A newsletter is archived with the `MARKETING` label and no reply in Sent.
 - [ ] Setting a `DONE` sales email back to `CLASSIFIED` in SQLite and restarting sends
       nothing new.
+- [ ] In dev, the `ext-cold-pitch` sample stays in the inbox with `SALES_OUTREACH` and
+      `This is archived`, nothing reaches Sent, and the log shows
+      `DEV would send sales_decline to pitch@vendor.example.com`.
 - [ ] `uv run pyright` is clean.
 
 ## Out of scope

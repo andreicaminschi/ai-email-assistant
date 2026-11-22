@@ -10,6 +10,7 @@ are files in `./secrets`, covered in [containers.md](containers.md).
 | --- | --- | --- | --- |
 | `AGENT_EMAIL` | none, required | `agent@gmail.com` | Startup account check, skipping own mail. |
 | `MANAGER_EMAIL` | none, required | `manager@gmail.com` | Forwards, matching the manager's replies. |
+| `RUN_MODE` | none, required | `dev` | `prod` runs every documented action. `dev` labels only, prints sends and bookings, and puts processed emails back to `NEW` on each start. See [classify-tree.md](classify-tree.md#dev-mode). |
 | `LLM_MODEL` | none, required | `anthropic:claude-sonnet-5-5` | Pydantic-AI model string. Dev: `openai:sonnet`. |
 | `LLM_BASE_URL` | empty, the provider's default | `http://wrapper:8000/v1` | Pydantic-AI provider. Set only in dev. |
 | `INTERNAL_DOMAINS` | empty | `acme.ai,acme.com` | Internal-sender check. |

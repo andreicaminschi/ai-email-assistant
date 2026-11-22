@@ -26,6 +26,7 @@ The plan builds a thin path through the whole agent first, then widens it.
 Foundation   001-005  project, config, tokens, startup check, labels
 Containers   006-008  app image, dev wrapper, compose
 Slice 1      009-016  poll -> parse -> checks -> label call -> Gmail label -> retries
+Dev          030-031  RUN_MODE flag, dev reset, sample emails (run after 010)
 Slice 2      017-018  full classification tree: branches, times, urgent
 Slice 3      019-021  autonomous handlers: templates, sends, archive, spam, invoice call
 Slice 4      022-024  TASK approval: forward, yes/no word match, reply to sender
@@ -36,6 +37,12 @@ Delivery     029      README
 After slice 1 the agent labels every email in Gmail. Each later slice replaces the
 placeholder handler for some labels with the real one. Steps 027 and 028 were removed
 when the meeting flow was simplified, so the numbers skip them.
+
+Steps 030 and 031 were added after 010 was done, so they're numbered last but run right
+after 010. With `RUN_MODE=dev`, the agent labels only. It never moves mail out of the
+inbox, prints the sends and bookings it would make, and every start puts processed
+emails back to `NEW` so the same samples run again. Each later step says where its dev
+switch goes.
 
 ## Steps
 
@@ -51,6 +58,8 @@ when the meeting flow was simplified, so the numbers skip them.
 | [008](step-008-story-wrapper-container.md) | Story | Wrapper container | Containers |
 | [009](step-009-story-state-store.md) | Story | State store | Slice 1 |
 | [010](step-010-story-polling.md) | Story | Polling | Slice 1 |
+| [030](step-030-story-run-mode-and-dev-reset.md) | Story | Run mode and dev reset | Dev |
+| [031](step-031-story-sample-emails.md) | Story | Sample emails and import script | Dev |
 | [011](step-011-story-message-parsing.md) | Story | Message parsing | Slice 1 |
 | [012](step-012-story-pre-llm-checks.md) | Story | Pre-LLM checks and audit | Slice 1 |
 | [013](step-013-clarification-llm-prompts.md) | Clarification | LLM prompts and retry limits | Slice 1 |
@@ -76,16 +85,17 @@ Where each piece of the agent ends up. The step that creates a file is listed fi
 | File | Holds | Steps |
 | --- | --- | --- |
 | `pyproject.toml`, `uv.lock` | Dependencies, the `wrapper` group, pyright | 001, 007 |
-| `src/email_agent/__main__.py` | Startup order and the poll loop | 001, 002, 004, 005, 010 |
-| `src/email_agent/config.py` | Settings from `.env` and secret files | 002 |
+| `src/email_agent/__main__.py` | Startup order and the poll loop | 001, 002, 004, 005, 010, 030 |
+| `src/email_agent/config.py` | Settings from `.env` and secret files | 002, 030 |
 | `scripts/make_tokens.py` | Host-side OAuth consent | 003 |
+| `scripts/import_samples.py`, `samples/` | Sample emails and their one-time import | 031 |
 | `src/email_agent/google_auth.py` | Token file to refreshed credentials | 004 |
-| `src/email_agent/gmail.py` | Every Gmail API call | 004, 005, 010, 011, 015, 020 |
+| `src/email_agent/gmail.py` | Every Gmail API call | 004, 005, 010, 030, 011, 015, 020 |
 | `src/email_agent/calendar.py` | Every Calendar API call | 004, 026 |
-| `src/email_agent/startup.py` | Account check and label setup | 004, 005 |
+| `src/email_agent/startup.py` | Account check, label setup, dev labels | 004, 005, 030 |
 | `Containerfile`, `compose.yaml`, `.dockerignore` | Images and services | 006, 008 |
 | `src/wrapper/` | Dev `claude -p` endpoint | 007 |
-| `src/email_agent/db.py` | SQLite tables and queries | 009, 010, 012, 014, 020, 022-025 |
+| `src/email_agent/db.py` | SQLite tables and queries | 009, 010, 030, 012, 014, 020, 022-025 |
 | `src/email_agent/poller.py` | One poll: history, full sync, new rows | 010, 016 |
 | `src/email_agent/message.py`, `html_text.py` | Gmail message to a parsed email | 011 |
 | `src/email_agent/checks.py` | Code checks before the LLM | 012 |

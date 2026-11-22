@@ -13,7 +13,7 @@ in the [state catalog](state-audit.md#state-catalog).
 | Trigger | Polling, every `POLL_SECONDS` from `.env`. The default is 5. |
 | Normal poll | `history.list` returns `messageAdded` events since the saved `historyId`, filtered to `INBOX`. |
 | Full sync | `messages.list` runs on first start, or when `history.list` returns 404 because the saved `historyId` expired. |
-| First start | The full sync processes every unread inbox email. |
+| First start | The full sync processes every unread inbox email. With `RUN_MODE=dev`, it processes every inbox email, read or not. |
 | Own mail | Any message whose `From` is `AGENT_EMAIL` is skipped. |
 | Approval replies | The manager's reply in a thread awaiting approval becomes `APPROVAL_REPLY`. It splits off before the label call and goes to the approval flow. |
 | Header checks | The `Auto-Submitted` skip and the internal-sender check run in code before the LLM. The internal flag picks the tree's `INTERNAL` or `EXTERNAL` branch. |
@@ -38,7 +38,7 @@ flowchart TD
     B -- yes --> C[Resume each from its saved state]
     C --> D
     B -- no --> D{historyId saved?}
-    D -- no --> F[Full sync: messages.list, unread INBOX]
+    D -- no --> F[Full sync: messages.list, unread INBOX<br/>dev: every INBOX email]
     D -- yes --> E[history.list since historyId, INBOX, messageAdded]
     E -- 404 expired --> F
     E -- ok --> G[New message IDs]

@@ -1,6 +1,6 @@
 # Step 024 — Story: Task answer to the sender
 
-**Type:** Story · **Slice:** Slice 4 · **Depends on:** 023
+**Type:** Story · **Slice:** Slice 4 · **Depends on:** 023, 030
 
 ## Goal
 
@@ -28,6 +28,8 @@ closes slice 4.
   `send_task_rejected`.
 - Both close the approval and the original email as `DONE`.
 - Sends are keyed by the reply's message ID, so a rerun of the reply sends nothing twice.
+- Dev mode (`RUN_MODE=dev`): both answers go through `sender.py`, so they're printed, not
+  sent. Follow whatever step 022 settled for the approval flow in dev.
 
 ## Acceptance criteria
 

@@ -1,0 +1,12 @@
+From: Maria Lopez <maria@partnerfirm.example.com>
+To: {{AGENT_EMAIL}}
+Subject: FYI, our office is closed Friday
+Content-Type: text/plain; charset=utf-8
+
+Hi,
+
+Just a heads-up that our office is closed this Friday for a public holiday. We'll be
+back on Monday, and any emails sent on Friday will be answered then.
+
+Have a good weekend,
+Maria
