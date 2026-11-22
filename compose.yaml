@@ -1,0 +1,24 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Containerfile
+      target: app
+    env_file: .env
+    secrets:
+      - gmail_token
+      - calendar_token
+      - llm_api_key
+    volumes:
+      - agent-data:/data
+
+secrets:
+  gmail_token:
+    file: ./secrets/gmail_token
+  calendar_token:
+    file: ./secrets/calendar_token
+  llm_api_key:
+    file: ./secrets/llm_api_key
+
+volumes:
+  agent-data:

@@ -23,6 +23,6 @@ def load_credentials(token_file: Path) -> Credentials:
     try:
         credentials = Credentials.from_authorized_user_file(str(token_file))  # pyright: ignore[reportUnknownMemberType]
         credentials.refresh(Request())  # pyright: ignore[reportUnknownMemberType]
-    except (ValueError, RefreshError):
+    except (PermissionError, ValueError, RefreshError):
         raise TokenRejected from None
     return credentials
