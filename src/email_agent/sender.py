@@ -43,6 +43,13 @@ def find_sent_send(gmail: GmailResource, send_id: str, outgoing: OutgoingEmail) 
     )
 
 
+def is_dev_printed(settings: Settings, outgoing: OutgoingEmail) -> bool:
+    """Dev sends only to the manager."""
+    if settings.run_mode is not RunMode.DEV:
+        return False
+    return outgoing.to.casefold() != settings.manager_email.casefold()
+
+
 def send_once(
     connection: sqlite3.Connection,
     gmail: GmailResource,
@@ -54,9 +61,11 @@ def send_once(
     @example
     send_once(connection, gmail, settings, "18c2", decline)  # no row → SENDING → send → SENT
     send_once(connection, gmail, settings, "18c2", decline)  # SENT → no send, same threadId
+    send_once(connection, gmail, dev_settings, "18c2", decline)  # prints, no row
+    send_once(connection, gmail, dev_settings, "18c2", task_forward)  # to manager: sent
     """
     template = outgoing.rendered.name
-    if settings.run_mode is RunMode.DEV:
+    if is_dev_printed(settings, outgoing):
         print(f"DEV would send {template} to {outgoing.to}")
         return ""
     send = read_send(connection, source_message_id, template)

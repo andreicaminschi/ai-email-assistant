@@ -262,5 +262,5 @@ flowchart TD
     Q -- no --> D
 ```
 
-In dev the agent sends nothing. It prints `DEV would send <template> to <address>` and
-writes no `sends` row.
+In dev the agent sends only to `MANAGER_EMAIL`, through the same guard. Any other send
+prints `DEV would send <template> to <address>` and writes no `sends` row.

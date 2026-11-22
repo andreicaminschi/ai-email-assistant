@@ -40,6 +40,20 @@ CREATE TABLE IF NOT EXISTS sends (
     state TEXT NOT NULL,
     PRIMARY KEY (message_id, template)
 );
+CREATE TABLE IF NOT EXISTS approvals (
+    forward_thread_id TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL,
+    original_thread_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    state TEXT NOT NULL,
+    sender_email TEXT NOT NULL,
+    sender_name TEXT NOT NULL,
+    original_subject TEXT NOT NULL,
+    meeting_start TEXT,
+    meeting_end TEXT,
+    latest_sender_rfc_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 EMAIL_COLUMNS = "message_id, thread_id, internal_date, state, attempts, internal, triage, updated_at"
@@ -300,6 +314,103 @@ def set_send_sent(connection: sqlite3.Connection, send: SendRow) -> SendRow:
         (SendState.SENT, send.message_id, send.template),
     )
     return SendRow(send.message_id, send.template, send.send_id, SendState.SENT)
+
+
+class ApprovalKind(StrEnum):
+    MEETING = "MEETING"
+    TASK = "TASK"
+
+
+APPROVAL_COLUMNS = (
+    "forward_thread_id, message_id, original_thread_id, kind, state, sender_email,"
+    " sender_name, original_subject, meeting_start, meeting_end, latest_sender_rfc_id,"
+    " updated_at"
+)
+
+
+@dataclass(frozen=True)
+class ApprovalRow:
+    forward_thread_id: str
+    message_id: str
+    original_thread_id: str
+    kind: ApprovalKind
+    state: State
+    sender_email: str
+    sender_name: str
+    original_subject: str
+    meeting_start: str | None
+    meeting_end: str | None
+    latest_sender_rfc_id: str
+    updated_at: str
+
+
+def to_approval_row(row: tuple[object, ...]) -> ApprovalRow:
+    (
+        forward_thread_id,
+        message_id,
+        original_thread_id,
+        kind,
+        state,
+        sender_email,
+        sender_name,
+        original_subject,
+        meeting_start,
+        meeting_end,
+        latest_sender_rfc_id,
+        updated_at,
+    ) = row
+    return ApprovalRow(
+        forward_thread_id=str(forward_thread_id),
+        message_id=str(message_id),
+        original_thread_id=str(original_thread_id),
+        kind=ApprovalKind(kind),
+        state=State(state),
+        sender_email=str(sender_email),
+        sender_name=str(sender_name),
+        original_subject=str(original_subject),
+        meeting_start=None if meeting_start is None else str(meeting_start),
+        meeting_end=None if meeting_end is None else str(meeting_end),
+        latest_sender_rfc_id=str(latest_sender_rfc_id),
+        updated_at=str(updated_at),
+    )
+
+
+def save_approval(connection: sqlite3.Connection, approval: ApprovalRow) -> ApprovalRow:
+    """A rerun overwrites the row for the same forward thread."""
+    row = connection.execute(
+        f"INSERT INTO approvals ({APPROVAL_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        f" ON CONFLICT (forward_thread_id) DO UPDATE SET"
+        f" message_id = excluded.message_id, original_thread_id = excluded.original_thread_id,"
+        f" kind = excluded.kind, state = excluded.state, sender_email = excluded.sender_email,"
+        f" sender_name = excluded.sender_name, original_subject = excluded.original_subject,"
+        f" meeting_start = excluded.meeting_start, meeting_end = excluded.meeting_end,"
+        f" latest_sender_rfc_id = excluded.latest_sender_rfc_id,"
+        f" updated_at = excluded.updated_at"
+        f" RETURNING {APPROVAL_COLUMNS}",
+        (
+            approval.forward_thread_id,
+            approval.message_id,
+            approval.original_thread_id,
+            approval.kind,
+            approval.state,
+            approval.sender_email,
+            approval.sender_name,
+            approval.original_subject,
+            approval.meeting_start,
+            approval.meeting_end,
+            approval.latest_sender_rfc_id,
+            utc_now(),
+        ),
+    ).fetchone()
+    return to_approval_row(row)
+
+
+def read_approval(connection: sqlite3.Connection, forward_thread_id: str) -> ApprovalRow | None:
+    row = connection.execute(
+        f"SELECT {APPROVAL_COLUMNS} FROM approvals WHERE forward_thread_id = ?",
+        (forward_thread_id,),
+    ).fetchone()
+    return None if row is None else to_approval_row(row)
 
 
 def read_history_id(connection: sqlite3.Connection) -> str | None:

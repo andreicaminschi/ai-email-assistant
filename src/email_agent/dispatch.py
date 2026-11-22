@@ -2,6 +2,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
+from email_agent.approval.forward import ApprovalForward, build_task_forward
 from email_agent.audit import Action
 from email_agent.classify.models import Label, Triage
 from email_agent.config import RunMode
@@ -29,6 +30,7 @@ class HandlerInput:
     label_ids: Mapping[str, str]
     run_mode: RunMode
     send_sales_decline: bool
+    manager_email: str
 
 
 @dataclass(frozen=True)
@@ -39,13 +41,14 @@ class ArchiveChanges:
 
 @dataclass(frozen=True)
 class HandlerResult:
-    """Order: labels, sends, archive."""
+    """Order: labels, sends, forward, archive."""
 
     add_label_ids: tuple[str, ...]
     remove_label_ids: tuple[str, ...]
     action: Action
     state: State
     sends: tuple[OutgoingEmail, ...] = ()
+    forward: ApprovalForward | None = None
     archive: ArchiveChanges | None = None
 
 
@@ -135,6 +138,19 @@ def move_to_spam(handler_input: HandlerInput) -> HandlerResult:
     )
 
 
+def forward_task(handler_input: HandlerInput) -> HandlerResult:
+    forward = build_task_forward(
+        handler_input.parsed, bool(handler_input.triage.urgent), handler_input.manager_email
+    )
+    return HandlerResult(
+        read_tag_ids(handler_input),
+        (),
+        Action.FORWARD_FOR_APPROVAL,
+        State.AWAITING_APPROVAL,
+        forward=forward,
+    )
+
+
 def do_nothing(_handler_input: HandlerInput) -> HandlerResult:
     return HandlerResult((), (), Action.NONE_UNCLASSIFIED, State.DONE)
 
@@ -146,7 +162,7 @@ EXTERNAL_HANDLERS: Mapping[Label, Handler] = MappingProxyType(
         Label.INFO_ONLY: file_info_only,
         Label.SPAM: move_to_spam,
         Label.MEETING_REQUEST: tag_with_label,
-        Label.TASK: tag_with_label,
+        Label.TASK: forward_task,
         Label.UNCLASSIFIED: do_nothing,
     }
 )

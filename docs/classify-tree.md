@@ -157,9 +157,10 @@ they never get `URGENT`.
 
 ## Dev mode
 
-With `RUN_MODE=dev`, nothing leaves the inbox and nothing is sent or booked. Labels are
-added as in prod. Every send and booking is printed as `DEV would send <template> to
-<address>` or `DEV would book <start>-<end> <title>`.
+With `RUN_MODE=dev`, nothing leaves the inbox and nothing is booked. Labels are added as
+in prod. Forwards to `MANAGER_EMAIL` are really sent, so the approval flow can be tested.
+Every other send and every booking is printed as `DEV would send <template> to <address>`
+or `DEV would book <start>-<end> <title>`.
 
 | Label | Prod Gmail result | Dev Gmail result |
 | --- | --- | --- |

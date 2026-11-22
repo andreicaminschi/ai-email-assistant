@@ -28,9 +28,8 @@ asking, whether it's urgent, and quoting their email, so I can answer yes or no.
 - The forward has no `In-Reply-To` and no `threadId`, so Gmail starts a new thread.
 - A second task in the same original thread gets its own forward and its own approval.
 - `AWAITING_APPROVAL` emails aren't resumed by the poller. They wait for a reply.
-- Dev mode (`RUN_MODE=dev`): the forward goes through `sender.py`, so it's printed, not
-  sent. With no forward thread, the approval flow in dev is open. Settle it with the user
-  at the start of this step.
+- Dev mode (`RUN_MODE=dev`): the forward is really sent, because it goes to
+  `MANAGER_EMAIL`. Sends to anyone else stay printed. Settled at the start of this step.
 
 ## Acceptance criteria
 
@@ -39,8 +38,8 @@ asking, whether it's urgent, and quoting their email, so I can answer yes or no.
 - [ ] An urgent task's forward has the subject "Urgent approval needed: ..." and the
       urgent first line. A normal one doesn't.
 - [ ] The `approvals` row holds the forward's thread ID and points to the original email.
-- [ ] In dev, `int-task-pto-urgent` shows `TASK` and `URGENT`, the manager gets nothing,
-      and the log shows `DEV would send approval_task to <MANAGER_EMAIL>`.
+- [ ] In dev, `int-task-pto-urgent` shows `TASK` and `URGENT`, and the manager gets
+      "Urgent approval needed: ..." once. A dev restart doesn't send it again.
 - [ ] `uv run pyright` is clean.
 
 ## Out of scope

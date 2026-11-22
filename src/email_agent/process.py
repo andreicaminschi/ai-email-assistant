@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from pydantic_ai.exceptions import AgentRunError, UnexpectedModelBehavior
 
+from email_agent.approval.forward import send_forward
 from email_agent.audit import Action, write_audit_entry
 from email_agent.checks import SenderFlags, is_auto_reply, is_own_mail, read_sender_flags
 from email_agent.classify.models import Triage
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
     from googleapiclient._apis.gmail.v1 import GmailResource  # pyright: ignore[reportMissingModuleSource]
 
 MAX_ATTEMPTS = 3
+FORWARD_THREAD_MISSING = "forward thread missing"
 
 
 @dataclass(frozen=True)
@@ -115,7 +117,14 @@ def run_handler(
 ) -> HandlerResult:
     handler = find_handler(flags.internal, triage.label)
     return handler(
-        HandlerInput(parsed, triage, label_ids, settings.run_mode, settings.send_sales_decline)
+        HandlerInput(
+            parsed,
+            triage,
+            label_ids,
+            settings.run_mode,
+            settings.send_sales_decline,
+            settings.manager_email,
+        )
     )
 
 
@@ -124,15 +133,21 @@ def run_handler_steps(
     gmail: GmailResource,
     settings: Settings,
     row: EmailRow,
+    parsed: ParsedEmail,
+    triage: Triage,
     result: HandlerResult,
 ) -> EmailRow:
-    """Labels, sends, then archive."""
+    """Labels, sends, forward, then archive. A lost forward thread gives NEEDS_REVIEW."""
     if result.add_label_ids or result.remove_label_ids:
         modify_labels(
             gmail, row.message_id, list(result.add_label_ids), list(result.remove_label_ids)
         )
     for outgoing in result.sends:
         send_once(connection, gmail, settings, row.message_id, outgoing)
+    if result.forward is not None:
+        approval = send_forward(connection, gmail, settings, parsed, result.forward)
+        if approval is None:
+            return review_email(connection, row, FORWARD_THREAD_MISSING, triage.label)
     if result.archive is None:
         return row
     modify_labels(
@@ -174,7 +189,11 @@ def dispatch_email(
     if row.state is not State.CLASSIFIED or triage is None or flags is None:
         return classified
     result = run_handler(settings, label_ids, parsed, flags, triage)
-    stepped = run_handler_steps(connection, gmail, settings, row, result)
+    stepped = run_handler_steps(connection, gmail, settings, row, parsed, triage, result)
+    if stepped.state is State.NEEDS_REVIEW:
+        return ProcessedEmail(
+            row=stepped, flags=flags, triage=triage, review_detail=FORWARD_THREAD_MISSING
+        )
     done = finish_email(connection, stepped, triage, result)
     return ProcessedEmail(row=done, flags=flags, triage=triage)
 
