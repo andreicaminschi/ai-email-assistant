@@ -17,7 +17,7 @@ screens, and end up with a Gmail token and a Calendar token in `./secrets`.
 
 | File | Change |
 | --- | --- |
-| `scripts/make_tokens.py` | New. Reads `./secrets/client_secret.json`, runs the installed-app flow once per token, writes `gmail_token.json` and `calendar_token.json`. |
+| `scripts/make_tokens.py` | New. Reads `./secrets/client_secret.json`, runs the installed-app flow once per token, writes `gmail_token` and `calendar_token`. |
 
 ## What to build
 

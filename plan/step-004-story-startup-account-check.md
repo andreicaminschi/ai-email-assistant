@@ -32,7 +32,7 @@ As the operator, I start the agent and it proves both tokens work and belong to
 ## Acceptance criteria
 
 - [ ] With both tokens valid, the log shows `Connection ready` and the agent exits 0.
-- [ ] With `gmail_token.json` renamed, the log shows `Gmail token missing` and exit 1.
+- [ ] With `gmail_token` renamed, the log shows `Gmail token missing` and exit 1.
 - [ ] With `AGENT_EMAIL` set to another address, the log shows `Gmail token is for another
       account` and exit 1.
 - [ ] `uv run pyright` is clean.

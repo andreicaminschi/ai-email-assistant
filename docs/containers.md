@@ -30,8 +30,8 @@ read-only bind mount, so podman and docker behave the same.
 ```mermaid
 flowchart LR
     subgraph Host
-        S1[./secrets/gmail_token.json]
-        S2[./secrets/calendar_token.json]
+        S1[./secrets/gmail_token]
+        S2[./secrets/calendar_token]
         S3[./secrets/claude_token]
         S4[./secrets/llm_api_key]
         ENV[.env]

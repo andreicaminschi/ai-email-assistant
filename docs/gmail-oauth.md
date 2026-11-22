@@ -34,8 +34,8 @@ touched. How the files reach the container is covered in [containers.md](contain
 | File | Written by | Read by |
 | --- | --- | --- |
 | `./secrets/client_secret.json` | Downloaded from Cloud Console | Token script only |
-| `./secrets/gmail_token.json` | Token script | Gmail module |
-| `./secrets/calendar_token.json` | Token script | Calendar module |
+| `./secrets/gmail_token` | Token script | Gmail module |
+| `./secrets/calendar_token` | Token script | Calendar module |
 
 Each token file holds the refresh token, `client_id` and `client_secret`. Only the token
 script reads `client_secret.json`.
@@ -62,7 +62,7 @@ sequenceDiagram
         Google-->>Script: auth code via localhost redirect
         Script->>Google: exchange code
         Google-->>Script: refresh token + access token
-        Script->>Secrets: write gmail_token.json or calendar_token.json
+        Script->>Secrets: write gmail_token or calendar_token
     end
 ```
 

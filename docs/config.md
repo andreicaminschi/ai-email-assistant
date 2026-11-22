@@ -20,6 +20,8 @@ are files in `./secrets`, covered in [containers.md](containers.md).
 | `MEETING_DEFAULT_TIME` | `10:00` | `10:00` | Meeting start when the email gives a date but no time. |
 | `MEETING_DURATION_MINUTES` | `30` | `30` | Length of every booked meeting. |
 | `SEND_SALES_DECLINE` | `true` | `false` | Turns the `SALES_OUTREACH` decline off. |
+| `SECRETS_DIR` | `/run/secrets` | `./secrets` | Folder the secret files are read from. Set only on the host. |
+| `DATA_DIR` | `/data` | `./data` | Folder for the SQLite file. Set only on the host. |
 
 Lists are comma-separated and matched ignoring case. A missing required variable stops
 startup with a log line naming it.
@@ -29,8 +31,8 @@ startup with a log line naming it.
 | File in `./secrets` | Mounted at | Read by |
 | --- | --- | --- |
 | `client_secret.json` | not mounted | Token script on the host |
-| `gmail_token.json` | `/run/secrets/gmail_token` | Gmail module |
-| `calendar_token.json` | `/run/secrets/calendar_token` | Calendar module |
+| `gmail_token` | `/run/secrets/gmail_token` | Gmail module |
+| `calendar_token` | `/run/secrets/calendar_token` | Calendar module |
 | `llm_api_key` | `/run/secrets/llm_api_key` | Code that builds the Pydantic-AI provider. In dev it holds any dummy value. |
 | `claude_token` | `/run/secrets/claude_token` | `wrapper` only |
 

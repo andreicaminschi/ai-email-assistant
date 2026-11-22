@@ -7,6 +7,7 @@ dependencies = [
     "pydantic-ai-slim[anthropic,openai]",
     "google-api-python-client",
     "google-auth-oauthlib",
+    "tzdata>=2026.6",
 ]
 
 [dependency-groups]
