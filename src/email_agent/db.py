@@ -112,6 +112,16 @@ def set_email_state(connection: sqlite3.Connection, message_id: str, state: Stat
     return to_email_row(row)
 
 
+def read_known_ids(connection: sqlite3.Connection, message_ids: list[str]) -> frozenset[str]:
+    if not message_ids:
+        return frozenset()
+    placeholders = ", ".join("?" for _ in message_ids)
+    rows = connection.execute(
+        f"SELECT message_id FROM emails WHERE message_id IN ({placeholders})", message_ids
+    ).fetchall()
+    return frozenset(str(row[0]) for row in rows)
+
+
 def read_history_id(connection: sqlite3.Connection) -> str | None:
     row = connection.execute("SELECT value FROM meta WHERE key = ?", (HISTORY_ID_KEY,)).fetchone()
     return None if row is None else str(row[0])

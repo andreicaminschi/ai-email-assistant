@@ -1,10 +1,12 @@
 import os
 import sqlite3
 import sys
+import time
 from importlib.metadata import version
 
 from email_agent.config import SettingsError, load_settings, strip_and_drop_empty
 from email_agent.db import database_path, open_database
+from email_agent.poller import poll_once
 from email_agent.startup import StartupError, check_connection, set_up_labels
 
 
@@ -34,7 +36,13 @@ def main() -> None:
         print(f"Could not open database {db_path}: {error}", file=sys.stderr)
         raise SystemExit(1) from None
     print(f"Database ready: {db_path}")
-    connection.close()
+    while True:
+        result = poll_once(gmail, connection)
+        for row in result.new_rows:
+            print(f"{row.state} {row.message_id}")
+        for message_id in result.gone_ids:
+            print(f"Skipped {message_id}: gone before fetch")
+        time.sleep(settings.poll_seconds)
 
 
 if __name__ == "__main__":
