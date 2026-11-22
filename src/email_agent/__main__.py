@@ -4,10 +4,12 @@ import sys
 import time
 from importlib.metadata import version
 
+from email_agent.checks import SenderFlags
 from email_agent.config import RunMode, SettingsError, load_settings, strip_and_drop_empty
-from email_agent.db import database_path, open_database
+from email_agent.db import EmailRow, database_path, open_database
 from email_agent.message import ParsedEmail, fetch_parsed_email
 from email_agent.poller import poll_once
+from email_agent.process import process_email
 from email_agent.startup import (
     SPAM_LABEL_ID,
     StartupError,
@@ -31,6 +33,13 @@ def print_parsed_email(parsed: ParsedEmail) -> None:
     print(f"  follow-up: {preview}")
     for attachment in parsed.attachments:
         print(f"  attachment {attachment.name} {attachment.size} bytes")
+
+
+def format_flags_line(row: EmailRow, flags: SenderFlags) -> str:
+    return (
+        f"{row.state} {row.message_id} internal={str(flags.internal).lower()}"
+        f" bulk={str(flags.bulk).lower()} dmarc={flags.dmarc or 'none'}"
+    )
 
 
 def main() -> None:
@@ -81,6 +90,9 @@ def main() -> None:
                 print(f"Skipped {email.row.message_id}: gone before parse")
                 continue
             print_parsed_email(parsed)
+            processed = process_email(connection, settings, email.row, parsed)
+            if processed.flags is not None:
+                print(format_flags_line(processed.row, processed.flags))
         for message_id in result.gone_ids:
             print(f"Skipped {message_id}: gone before fetch")
         time.sleep(settings.poll_seconds)

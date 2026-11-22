@@ -22,6 +22,17 @@ CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    urgent INTEGER,
+    action TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    detail TEXT NOT NULL
+);
 """
 
 EMAIL_COLUMNS = "message_id, thread_id, internal_date, state, attempts, internal, triage, updated_at"
@@ -112,6 +123,77 @@ def set_email_state(connection: sqlite3.Connection, message_id: str, state: Stat
     return to_email_row(row)
 
 
+def raise_attempts(connection: sqlite3.Connection, message_id: str) -> EmailRow:
+    row = connection.execute(
+        f"UPDATE emails SET attempts = attempts + 1, updated_at = ? WHERE message_id = ?"
+        f" RETURNING {EMAIL_COLUMNS}",
+        (utc_now(), message_id),
+    ).fetchone()
+    if row is None:
+        raise EmailNotFound(message_id)
+    return to_email_row(row)
+
+
+def set_email_classifying(
+    connection: sqlite3.Connection, message_id: str, internal: bool
+) -> EmailRow:
+    row = connection.execute(
+        f"UPDATE emails SET state = ?, internal = ?, updated_at = ? WHERE message_id = ?"
+        f" RETURNING {EMAIL_COLUMNS}",
+        (State.CLASSIFYING, internal, utc_now(), message_id),
+    ).fetchone()
+    if row is None:
+        raise EmailNotFound(message_id)
+    return to_email_row(row)
+
+
+@dataclass(frozen=True)
+class AuditRow:
+    id: int
+    at: str
+    message_id: str
+    thread_id: str
+    label: str
+    urgent: bool | None
+    action: str
+    outcome: State
+    detail: str
+
+
+def insert_audit(
+    connection: sqlite3.Connection,
+    message_id: str,
+    thread_id: str,
+    label: str,
+    urgent: bool | None,
+    action: str,
+    outcome: State,
+    detail: str,
+) -> AuditRow:
+    at = utc_now()
+    row = connection.execute(
+        "INSERT INTO audit (at, message_id, thread_id, label, urgent, action, outcome, detail)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        (at, message_id, thread_id, label, urgent, action, outcome, detail),
+    ).fetchone()
+    return AuditRow(
+        id=int(str(row[0])),
+        at=at,
+        message_id=message_id,
+        thread_id=thread_id,
+        label=label,
+        urgent=urgent,
+        action=action,
+        outcome=outcome,
+        detail=detail,
+    )
+
+
+def delete_audit_rows(connection: sqlite3.Connection, message_id: str) -> str:
+    connection.execute("DELETE FROM audit WHERE message_id = ?", (message_id,))
+    return message_id
+
+
 def read_processed_emails(connection: sqlite3.Connection) -> tuple[EmailRow, ...]:
     rows = connection.execute(
         f"SELECT {EMAIL_COLUMNS} FROM emails WHERE state != ? ORDER BY internal_date",
@@ -121,6 +203,7 @@ def read_processed_emails(connection: sqlite3.Connection) -> tuple[EmailRow, ...
 
 
 def reset_email(connection: sqlite3.Connection, message_id: str) -> EmailRow:
+    delete_audit_rows(connection, message_id)
     row = connection.execute(
         f"UPDATE emails SET state = ?, attempts = 0, internal = NULL, triage = NULL,"
         f" updated_at = ? WHERE message_id = ? RETURNING {EMAIL_COLUMNS}",
@@ -132,6 +215,7 @@ def reset_email(connection: sqlite3.Connection, message_id: str) -> EmailRow:
 
 
 def delete_email(connection: sqlite3.Connection, message_id: str) -> str:
+    delete_audit_rows(connection, message_id)
     connection.execute("DELETE FROM emails WHERE message_id = ?", (message_id,))
     return message_id
 

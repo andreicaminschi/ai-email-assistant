@@ -1,0 +1,29 @@
+import json
+import sqlite3
+from dataclasses import asdict
+from enum import StrEnum
+
+from email_agent.db import AuditRow, State, insert_audit
+
+
+class Action(StrEnum):
+    NONE = "none"
+
+
+def format_audit_line(entry: AuditRow) -> str:
+    return json.dumps(asdict(entry))
+
+
+def write_audit_entry(
+    connection: sqlite3.Connection,
+    message_id: str,
+    thread_id: str,
+    action: Action,
+    outcome: State,
+    detail: str,
+    label: str = "",
+    urgent: bool | None = None,
+) -> AuditRow:
+    entry = insert_audit(connection, message_id, thread_id, label, urgent, action, outcome, detail)
+    print(format_audit_line(entry))
+    return entry

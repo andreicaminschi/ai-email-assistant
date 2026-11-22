@@ -22,7 +22,7 @@ database.
 | `src/email_agent/process.py` | New. Processes one email from its saved state. Raises the attempt count, then routes `NEW` to `SKIPPED` or `CLASSIFYING`. |
 | `src/email_agent/audit.py` | New. Writes one audit row and prints the same entry as one JSON line on stdout. |
 | `src/email_agent/db.py` | Add the `audit` table and the `attempts` and `internal` updates. |
-| `src/email_agent/poller.py` | Hand each new email to `process.py` in arrival order. |
+| `src/email_agent/__main__.py` | Hand each new email to `process.py` in arrival order, after its parse lines print. |
 
 ## What to build
 
