@@ -5,6 +5,8 @@ services:
       dockerfile: Containerfile
       target: app
     env_file: .env
+    environment:
+      DATA_DIR: /data
     secrets:
       - gmail_token
       - calendar_token
