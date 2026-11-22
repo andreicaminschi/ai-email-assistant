@@ -13,6 +13,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "google-api-python-client-stubs>=1.40.0",
+    "pydantic-evals>=2.71.0",
     "pyright",
     { include-group = "wrapper" },
 ]
@@ -29,5 +30,5 @@ build-backend = "uv_build"
 module-name = ["email_agent", "wrapper"]
 
 [tool.pyright]
-include = ["src", "scripts"]
+include = ["src", "scripts", "evals"]
 typeCheckingMode = "strict"
