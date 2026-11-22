@@ -1,8 +1,10 @@
 import os
+import sqlite3
 import sys
 from importlib.metadata import version
 
 from email_agent.config import SettingsError, load_settings, strip_and_drop_empty
+from email_agent.db import database_path, open_database
 from email_agent.startup import StartupError, check_connection, set_up_labels
 
 
@@ -25,6 +27,14 @@ def main() -> None:
     else:
         print("Every label exists")
     print(f"Labels ready: {len(label_setup.label_ids)}")
+    db_path = database_path(settings.data_dir)
+    try:
+        connection = open_database(settings.data_dir)
+    except (sqlite3.Error, OSError) as error:
+        print(f"Could not open database {db_path}: {error}", file=sys.stderr)
+        raise SystemExit(1) from None
+    print(f"Database ready: {db_path}")
+    connection.close()
 
 
 if __name__ == "__main__":

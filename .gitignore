@@ -1,5 +1,6 @@
 tmp/
 secrets/
+data/
 .env
 .claude/settings.local.json
 */**/__pycache__
